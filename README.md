@@ -1,2 +1,0 @@
-# maxchinwoo.github.io
-honepage
