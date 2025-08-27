@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>숫자 터치 게임</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #controls {
+      margin: 20px;   /* 숫자 테이블과 위쪽 컨트롤 사이 간격 */
+      display: flex;
+      gap: 20px;      /* 점수와 버튼 간격 */
+      align-items: center;
+      justify-content: center;
+    }
+    #game {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 5px;
+      width: 100vw;
+      height: 100vw; /* 정사각형으로 화면 꽉 차게 */
+      max-width: 100vh; /* 세로가 더 짧으면 맞춤 */
+      max-height: 100vh;
+    }
+    .cell {
+      background: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4em;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation; /* 모바일 터치 지연 방지 */
+    }
+    .cell:active {
+      background: #ddd;
+    }
+    #status {
+      font-size: 3em;   /* 점수 글씨 크게 */
+    }
+    #resetBtn {
+      padding: 12px 24px;  /* 버튼 크기 2배 */
+      font-size: 2em;      /* 버튼 글씨 2배 */
+      border: none;
+      border-radius: 10px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    #resetBtn:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div id="status">⏱ 기록: -</div>
+    <button id="resetBtn">🔄 리셋</button>
+  </div>
+  <div id="game"></div>
+
+  <script>
+    const gameContainer = document.getElementById("game");
+    const statusDiv = document.getElementById("status");
+    const resetBtn = document.getElementById("resetBtn");
+    let numbers = [];
+    let nextNumber = 1;
+    let startTime = null;
+
+    // 배열 섞기
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    // 게임 초기화
+    function initGame() {
+      numbers = shuffle([...Array(16).keys()].map(n => n + 1));
+      nextNumber = 1;
+      startTime = null;
+      gameContainer.innerHTML = "";
+      numbers.forEach(num => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = num;
+        cell.onclick = () => handleClick(num, cell);
+        gameContainer.appendChild(cell);
+      });
+      statusDiv.textContent = "⏱ 기록: -";
+    }
+
+    // 숫자 클릭 처리
+    function handleClick(num, cell) {
+      if (num === nextNumber) {
+        if (num === 1) {
+          startTime = new Date();
+        }
+        cell.style.background = "#90ee90"; // 초록색으로 표시
+        if (num === 16) {
+          const endTime = new Date();
+          const record = ((endTime - startTime) / 1000).toFixed(2);
+          statusDiv.textContent = `🎉 완료! 기록: ${record}초`;
+        }
+        nextNumber++;
+      }
+    }
+
+    // 리셋 버튼 이벤트
+    resetBtn.onclick = () => initGame();
+
+    // 시작
+    initGame();
+  </script>
+</body>
+</html>
