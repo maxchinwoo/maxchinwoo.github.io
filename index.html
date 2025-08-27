@@ -1,128 +1,330 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>숫자 터치 게임</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-    }
-    #controls {
-      margin: 20px;   /* 숫자 테이블과 위쪽 컨트롤 사이 간격 */
-      display: flex;
-      gap: 20px;      /* 점수와 버튼 간격 */
-      align-items: center;
-      justify-content: center;
-    }
-    #game {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(4, 1fr);
-      gap: 5px;
-      width: 100vw;
-      height: 100vw; /* 정사각형으로 화면 꽉 차게 */
-      max-width: 100vh; /* 세로가 더 짧으면 맞춤 */
-      max-height: 100vh;
-    }
-    .cell {
-      background: #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 4em;
-      font-weight: bold;
-      border-radius: 8px;
-      cursor: pointer;
-      user-select: none;
-      touch-action: manipulation; /* 모바일 터치 지연 방지 */
-    }
-    .cell:active {
-      background: #ddd;
-    }
-    #status {
-      font-size: 3em;   /* 점수 글씨 크게 */
-    }
-    #resetBtn {
-      padding: 12px 24px;  /* 버튼 크기 2배 */
-      font-size: 2em;      /* 버튼 글씨 2배 */
-      border: none;
-      border-radius: 10px;
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-    }
-    #resetBtn:hover {
-      background: #0056b3;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Pacman Lite + Dynamic Joystick (0.5x)</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, Arial, sans-serif;
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
+    touch-action: none; /* 전체 기본 제스처 방지(스크롤/줌 등) */
+  }
+  .wrap {
+    position: relative;
+    height: 100vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  canvas {
+    width: min(100vw, 100vh);
+    height: min(100vw, 100vh);
+    background: #000;
+    border: 2px solid #1e90ff;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(30,144,255,0.3);
+    image-rendering: pixelated;
+  }
+
+  /* === 동적 조이스틱: 기본은 숨김, 터치 시 나타나서 손가락 따라다님 === */
+  .joystick {
+    position: absolute;
+    left: 0; top: 0;
+    width: 0; height: 0;
+    pointer-events: none; /* 자체가 입력을 가로채지 않게 */
+    opacity: 0;
+    transition: opacity .08s ease;
+  }
+  .joy-base {
+    position: absolute;
+    width: 160px; height: 160px;
+    margin-left: -80px; margin-top: -80px; /* 중심 정렬 */
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, #1b1b1b 0%, #121212 70%);
+    border: 2px solid #3a3a3a;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45), inset 0 0 14px rgba(255,255,255,0.06);
+  }
+  .joy-knob {
+    position: absolute;
+    width: 88px; height: 88px;
+    margin-left: -44px; margin-top: -44px; /* 중심 정렬 */
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, #2a2a2a 0%, #1d1d1d 70%);
+    border: 2px solid #5a5a5a;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.6), inset 0 0 10px rgba(30,144,255,0.3);
+  }
+
+  .hud {
+    position: absolute;
+    top: 10px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 18px;
+    letter-spacing: .5px;
+  }
+</style>
 </head>
 <body>
-  <div id="controls">
-    <div id="status">⏱ 기록: -</div>
-    <button id="resetBtn">🔄 리셋</button>
+<div class="wrap" id="stage">
+  <canvas id="game" width="420" height="420"></canvas>
+  <div class="hud" id="hud">SCORE: 0</div>
+
+  <!-- 동적 조이스틱 (터치/드래그 중에만 표시) -->
+  <div class="joystick" id="joystick">
+    <div class="joy-base" id="joyBase"></div>
+    <div class="joy-knob" id="joyKnob"></div>
   </div>
-  <div id="game"></div>
+</div>
 
-  <script>
-    const gameContainer = document.getElementById("game");
-    const statusDiv = document.getElementById("status");
-    const resetBtn = document.getElementById("resetBtn");
-    let numbers = [];
-    let nextNumber = 1;
-    let startTime = null;
+<script>
+/* ====== 기본 설정 ====== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
 
-    // 배열 섞기
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+const TILE = 20;                 // 타일 크기(px) — canvas는 21x21 타일(420px)
+const ROWS = 21, COLS = 21;
+const BASE_SPEED = 4;            // 기본 속도(px/frame)
+const SPEED_MULT = 0.5;          // 🔥 요청: 0.5배속
+const SPEED = BASE_SPEED * SPEED_MULT;
+const DOT_RADIUS = 3;
+const PELLET_SCORE = 10;
+
+let score = 0;
+
+/* ====== 간단 미로 만들기 ====== */
+const maze = [];
+for (let r=0; r<ROWS; r++){
+  maze[r] = [];
+  for (let c=0; c<COLS; c++){
+    const border = (r===0||c===0||r===ROWS-1||c===COLS-1) ? 1 : 0;
+    const wallBand = (r%2===0 && c%2===0) ? 1 : 0;
+    let v = (border || (wallBand && Math.random()<0.2)) ? 1 : 0;
+    if ((r>=1 && r<=3) && (c>=1 && c<=3)) v = 0; // 시작 영역 비우기
+    maze[r][c] = v;
+  }
+}
+// 점(펠릿)
+const pellets = new Set();
+for (let r=1;r<ROWS-1;r++){
+  for (let c=1;c<COLS-1;c++){
+    if (maze[r][c]===0){
+      pellets.add(`${r},${c}`);
+    }
+  }
+}
+
+const pacman = {
+  x: TILE*1 + TILE/2,
+  y: TILE*1 + TILE/2,
+  dir: {x:1, y:0},    // 현재 이동 방향(격자 기준)
+  want:{x:0, y:0},    // 입력 방향(격자 기준)
+  radius: TILE*0.45,
+};
+
+/* ====== 유틸 ====== */
+function tileAt(x, y){
+  const c = Math.floor(x / TILE);
+  const r = Math.floor(y / TILE);
+  return {r, c};
+}
+function isWall(r,c){ return maze[r]?.[c]===1; }
+function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+
+/* ====== 이동/충돌 ====== */
+function tryTurn(){
+  if (pacman.want.x===0 && pacman.want.y===0) return;
+  const nx = pacman.x + pacman.want.x * SPEED;
+  const ny = pacman.y + pacman.want.y * SPEED;
+  if (!willCollide(nx, ny)){
+    pacman.dir = {...pacman.want};
+  }
+}
+function willCollide(nx, ny){
+  const half = TILE*0.45;
+  const pts = [
+    {x:nx - half, y:ny - half},
+    {x:nx + half, y:ny - half},
+    {x:nx - half, y:ny + half},
+    {x:nx + half, y:ny + half},
+  ];
+  return pts.some(p=>{
+    const {r,c} = tileAt(p.x, p.y);
+    return isWall(r,c);
+  });
+}
+function move(){
+  tryTurn();
+  let nx = pacman.x + pacman.dir.x * SPEED;
+  let ny = pacman.y + pacman.dir.y * SPEED;
+
+  if (willCollide(nx, ny)){
+    const nxOnly = pacman.x + pacman.dir.x * SPEED;
+    if (!willCollide(nxOnly, pacman.y)) pacman.x = nxOnly;
+    const nyOnly = pacman.y + pacman.dir.y * SPEED;
+    if (!willCollide(pacman.x, nyOnly)) pacman.y = nyOnly;
+  } else {
+    pacman.x = nx; pacman.y = ny;
+  }
+  pacman.x = clamp(pacman.x, TILE*0.5, TILE*(COLS-0.5));
+  pacman.y = clamp(pacman.y, TILE*0.5, TILE*(ROWS-0.5));
+
+  const {r,c} = tileAt(pacman.x, pacman.y);
+  const key = `${r},${c}`;
+  if (pellets.has(key)){
+    pellets.delete(key);
+    score += PELLET_SCORE;
+    hud.textContent = `SCORE: ${score}`;
+  }
+}
+
+/* ====== 그리기 ====== */
+function drawMaze(){
+  for (let r=0;r<ROWS;r++){
+    for (let c=0;c<COLS;c++){
+      if (maze[r][c]===1){
+        ctx.fillStyle = '#113b8f';
+        ctx.fillRect(c*TILE, r*TILE, TILE, TILE);
       }
-      return array;
     }
+  }
+  ctx.fillStyle = '#ffd54a';
+  pellets.forEach(k=>{
+    const [r,c] = k.split(',').map(Number);
+    const cx = c*TILE + TILE/2;
+    const cy = r*TILE + TILE/2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+function drawPacman(){
+  ctx.fillStyle = '#ffeb3b';
+  const mouthOpen = 0.35;
+  const ang = Math.atan2(pacman.dir.y, pacman.dir.x) || 0;
+  ctx.beginPath();
+  ctx.moveTo(pacman.x, pacman.y);
+  ctx.arc(pacman.x, pacman.y, pacman.radius, ang + mouthOpen, ang - mouthOpen, false);
+  ctx.closePath();
+  ctx.fill();
+}
 
-    // 게임 초기화
-    function initGame() {
-      numbers = shuffle([...Array(16).keys()].map(n => n + 1));
-      nextNumber = 1;
-      startTime = null;
-      gameContainer.innerHTML = "";
-      numbers.forEach(num => {
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.textContent = num;
-        cell.onclick = () => handleClick(num, cell);
-        gameContainer.appendChild(cell);
-      });
-      statusDiv.textContent = "⏱ 기록: -";
-    }
+/* ====== 루프 ====== */
+function loop(){
+  move();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawMaze();
+  drawPacman();
+  requestAnimationFrame(loop);
+}
+loop();
 
-    // 숫자 클릭 처리
-    function handleClick(num, cell) {
-      if (num === nextNumber) {
-        if (num === 1) {
-          startTime = new Date();
-        }
-        cell.style.background = "#90ee90"; // 초록색으로 표시
-        if (num === 16) {
-          const endTime = new Date();
-          const record = ((endTime - startTime) / 1000).toFixed(2);
-          statusDiv.textContent = `🎉 완료! 기록: ${record}초`;
-        }
-        nextNumber++;
-      }
-    }
+/* =========================
+   입력: 키보드(PC)
+   ========================= */
+window.addEventListener('keydown', (e)=>{
+  if (e.key === 'ArrowUp')    pacman.want = {x:0,y:-1};
+  if (e.key === 'ArrowDown')  pacman.want = {x:0,y: 1};
+  if (e.key === 'ArrowLeft')  pacman.want = {x:-1,y:0};
+  if (e.key === 'ArrowRight') pacman.want = {x: 1,y:0};
+});
 
-    // 리셋 버튼 이벤트
-    resetBtn.onclick = () => initGame();
+/* =========================
+   입력: 동적 조이스틱(모바일/터치 & 마우스)
+   - 화면 어디든 터치/클릭하면 그 지점에 조이스틱 생성
+   - 드래그 벡터로 방향 입력
+   - 손 떼면 조이스틱 숨김 + 정지
+   - 격자형 게임이라 4방향으로 "스냅"
+   ========================= */
+const stage = document.getElementById('stage');
+const joy = document.getElementById('joystick');
+const joyBase = document.getElementById('joyBase');
+const joyKnob = document.getElementById('joyKnob');
 
-    // 시작
-    initGame();
-  </script>
+let joyActive = false;
+let joyCenter = {x:0, y:0};
+const MAX_RADIUS = 60;  // 베이스 중심으로부터 노브 최대 이동(px)
+
+function showJoystick(x, y){
+  joy.style.left = x + 'px';
+  joy.style.top  = y + 'px';
+  joy.style.opacity = 1;
+}
+function hideJoystick(){
+  joy.style.opacity = 0;
+}
+
+function setKnob(dx, dy){
+  const len = Math.hypot(dx, dy);
+  const clamped = Math.min(len, MAX_RADIUS);
+  const nx = (len>0) ? dx * (clamped/len) : 0;
+  const ny = (len>0) ? dy * (clamped/len) : 0;
+  joyKnob.style.left = (joyCenter.x + nx) + 'px';
+  joyKnob.style.top  = (joyCenter.y + ny) + 'px';
+
+  // 방향 스냅(4방향) — 가장 큰 축으로 결정
+  if (len < 10){
+    pacman.want = {x:0, y:0}; // 미세 움직임은 정지
+    return;
+  }
+  if (Math.abs(dx) >= Math.abs(dy)){
+    pacman.want = {x: Math.sign(dx), y: 0};
+  } else {
+    pacman.want = {x: 0, y: Math.sign(dy)};
+  }
+}
+
+/* 좌표 유틸: 포인터 이벤트 위치 -> stage 기준 좌표 */
+function getPoint(e){
+  if (e.touches && e.touches[0]){
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+/* 포인터 다운: 조이스틱 생성 */
+function onPointerDown(e){
+  e.preventDefault();
+  const p = getPoint(e);
+  joyActive = true;
+  showJoystick(p.x, p.y);
+  joyCenter = {x:0, y:0}; // 베이스/노브는 조이스틱 컨테이너 안에서 절대좌표
+  joyBase.style.left = '0px';
+  joyBase.style.top  = '0px';
+  joyKnob.style.left = '0px';
+  joyKnob.style.top  = '0px';
+}
+function onPointerMove(e){
+  if (!joyActive) return;
+  e.preventDefault();
+  const rect = joy.getBoundingClientRect();
+  const p = getPoint(e);
+  // 컨테이너 기준 좌표로 변환
+  const dx = p.x - rect.left; 
+  const dy = p.y - rect.top;
+  // 중심(joyBase center)은 컨테이너의 (0,0)으로 두었으니, 조정
+  setKnob(dx, dy);
+}
+function onPointerUp(e){
+  if (!joyActive) return;
+  e.preventDefault();
+  joyActive = false;
+  hideJoystick();
+  pacman.want = {x:0, y:0}; // 손 떼면 정지
+}
+
+stage.addEventListener('touchstart', onPointerDown, {passive:false});
+stage.addEventListener('touchmove',  onPointerMove,  {passive:false});
+stage.addEventListener('touchend',   onPointerUp,    {passive:false});
+stage.addEventListener('mousedown',  onPointerDown);
+window.addEventListener('mousemove', onPointerMove);
+window.addEventListener('mouseup',   onPointerUp);
+</script>
 </body>
 </html>
