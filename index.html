@@ -1,15 +1,40 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>간단한 게임</title>
+  <meta charset="UTF-8">
+  <title>네모 움직이기 게임</title>
   <style>
-    canvas { background: #eee; display: block; margin: auto; }
+    body { text-align: center; }
+    canvas { border: 2px solid black; }
   </style>
 </head>
 <body>
-  <h1 style="text-align:center">🎮 내 첫 게임</h1>
+  <h1>⬛ 방향키로 네모 움직이기</h1>
+  <!-- 게임용 캔버스 -->
   <canvas id="gameCanvas" width="400" height="400"></canvas>
-  <script src="game.js"></script>
+
+  <!-- 자바스크립트 코드 -->
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let x = 200, y = 200, size = 20;
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") y -= 10;
+      if (e.key === "ArrowDown") y += 10;
+      if (e.key === "ArrowLeft") x -= 10;
+      if (e.key === "ArrowRight") x += 10;
+      draw();
+    });
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "blue";
+      ctx.fillRect(x, y, size, size);
+    }
+
+    draw();
+  </script>
 </body>
 </html>
