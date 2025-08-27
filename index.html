@@ -2,29 +2,43 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>네모 움직이기 게임</title>
+  <title>터치로 네모 움직이기</title>
   <style>
-    body { text-align: center; }
-    canvas { border: 2px solid black; }
+    body { text-align: center; margin: 0; }
+    canvas { border: 2px solid black; display: block; margin: auto; }
   </style>
 </head>
 <body>
-  <h1>⬛ 방향키로 네모 움직이기</h1>
-  <!-- 게임용 캔버스 -->
+  <h2>스마트폰 터치 & 키보드로 네모 움직이기</h2>
   <canvas id="gameCanvas" width="400" height="400"></canvas>
 
-  <!-- 자바스크립트 코드 -->
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
     let x = 200, y = 200, size = 20;
 
+    // 키보드 이동
     document.addEventListener("keydown", (e) => {
       if (e.key === "ArrowUp") y -= 10;
       if (e.key === "ArrowDown") y += 10;
       if (e.key === "ArrowLeft") x -= 10;
       if (e.key === "ArrowRight") x += 10;
+      draw();
+    });
+
+    // 터치 이동 (화면 4분할)
+    canvas.addEventListener("touchstart", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const tx = touch.clientX - rect.left;
+      const ty = touch.clientY - rect.top;
+
+      if (ty < canvas.height / 3) y -= 10;               // 위쪽
+      else if (ty > (canvas.height * 2) / 3) y += 10;    // 아래쪽
+      else if (tx < canvas.width / 2) x -= 10;           // 왼쪽
+      else x += 10;                                      // 오른쪽
+
       draw();
     });
 
