@@ -2,53 +2,102 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>터치로 네모 움직이기</title>
+  <title>숫자 터치 게임</title>
   <style>
-    body { text-align: center; margin: 0; }
-    canvas { border: 2px solid black; display: block; margin: auto; }
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #game {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 5px;
+      width: 100vw;
+      height: 100vw; /* 정사각형으로 화면 꽉 차게 */
+      max-width: 100vh; /* 세로가 더 짧으면 맞춤 */
+      max-height: 100vh;
+    }
+    .cell {
+      background: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2em;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation; /* 모바일 터치 지연 방지 */
+    }
+    .cell:active {
+      background: #ddd;
+    }
+    #status {
+      margin: 10px;
+      font-size: 1.5em;
+    }
   </style>
 </head>
 <body>
-  <h2>스마트폰 터치 & 키보드로 네모 움직이기</h2>
-  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <div id="status">⏱ 기록: -</div>
+  <div id="game"></div>
 
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+    const gameContainer = document.getElementById("game");
+    const statusDiv = document.getElementById("status");
+    let numbers = [];
+    let nextNumber = 1;
+    let startTime = null;
 
-    let x = 200, y = 200, size = 20;
-
-    // 키보드 이동
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowUp") y -= 10;
-      if (e.key === "ArrowDown") y += 10;
-      if (e.key === "ArrowLeft") x -= 10;
-      if (e.key === "ArrowRight") x += 10;
-      draw();
-    });
-
-    // 터치 이동 (화면 4분할)
-    canvas.addEventListener("touchstart", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const touch = e.touches[0];
-      const tx = touch.clientX - rect.left;
-      const ty = touch.clientY - rect.top;
-
-      if (ty < canvas.height / 3) y -= 10;               // 위쪽
-      else if (ty > (canvas.height * 2) / 3) y += 10;    // 아래쪽
-      else if (tx < canvas.width / 2) x -= 10;           // 왼쪽
-      else x += 10;                                      // 오른쪽
-
-      draw();
-    });
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "blue";
-      ctx.fillRect(x, y, size, size);
+    // 배열 섞기
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
     }
 
-    draw();
+    // 게임 초기화
+    function initGame() {
+      numbers = shuffle([...Array(16).keys()].map(n => n + 1));
+      nextNumber = 1;
+      startTime = null;
+      gameContainer.innerHTML = "";
+      numbers.forEach(num => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = num;
+        cell.onclick = () => handleClick(num, cell);
+        gameContainer.appendChild(cell);
+      });
+      statusDiv.textContent = "⏱ 기록: -";
+    }
+
+    // 숫자 클릭 처리
+    function handleClick(num, cell) {
+      if (num === nextNumber) {
+        if (num === 1) {
+          startTime = new Date();
+        }
+        cell.style.background = "#90ee90"; // 초록색으로 표시
+        if (num === 16) {
+          const endTime = new Date();
+          const record = ((endTime - startTime) / 1000).toFixed(2);
+          statusDiv.textContent = `🎉 완료! 기록: ${record}초`;
+        }
+        nextNumber++;
+      }
+    }
+
+    // 시작
+    initGame();
   </script>
 </body>
 </html>
