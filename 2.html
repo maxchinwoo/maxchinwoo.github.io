@@ -184,6 +184,9 @@ let gameOver = false;
 let star = null;                 // {r,c, appearAt, expireAt}
 let nextStarSpawnAt = 0;         // ms (별이 사라지거나 먹힌 후 10초 뒤)
 let powerActiveUntil = 0;        // ms (무적+가속 5초)
+let ghostsHiddenUntil = 0;     // 이 시각까지는 유령을 숨김(전부 제거된 상태)
+let nextGhostRespawnAt = 0;    // 다음 유령이 스폰될 시각(천천히 한 마리씩)
+
 
 /* 포털 좌표(경계 중앙 4곳) */
 const PORTALS = {
@@ -211,7 +214,7 @@ function makeGhost(r,c,color){
   return { r, c, dir: [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}][Math.floor(Math.random()*4)], color, _acc:0 };
 }
 let ghosts = [];
-const MAX_GHOSTS = 6;
+const MAX_GHOSTS = 4;
 
 /* ====== 유틸 & 제약 검사 ====== */
 function inBounds(r,c){ return r>=0 && r<ROWS && c>=0 && c<COLS; }
@@ -417,7 +420,7 @@ function dirsTowardPlayerFrom(r,c){
 function randomDirs(){ return [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].sort(()=>Math.random()-0.5); }
 function moveGhost(g){
   if (!g.dir || g._acc===0){
-    const pri = (Math.random()<0.12) ? dirsTowardPlayerFrom(g.r,g.c) : randomDirs();
+    const pri = (Math.random()<0.1) ? dirsTowardPlayerFrom(g.r,g.c) : randomDirs();
     let set=false;
     for (const d of pri){
       if (canMove(g.r + d.y, g.c + d.x)){ g.dir=d; set=true; break; }
@@ -468,10 +471,16 @@ function maybeConsumeStar(){
   if (!star) return;
   if (pacman.r === star.r && pacman.c === star.c){
     star = null;
-    powerActiveUntil = nowMs() + 8000; // 5초 유지
-    nextStarSpawnAt = nowMs() + 10000; // 10초 후 재등장
+    powerActiveUntil = nowMs() + 8000;    // 무적+가속 유지시간(원 코드 유지)
+    nextStarSpawnAt = nowMs() + 10000;    // 다음 별 스폰 예약
+
+    // ⭐ 요구사항: 유령 전부 제거 → 일정 시간 후부터 하나씩 재등장
+    ghosts = [];                          // ① 즉시 전부 제거
+    ghostsHiddenUntil = nowMs() + 10000;   // ② 3초간은 아예 없음(원하면 2000~5000ms로 조정)
+    nextGhostRespawnAt = ghostsHiddenUntil; // ③ 숨김 끝나자마자 첫 마리 등장 예약
   }
 }
+
 
 /* ====== 그리기 ====== */
 function drawMaze(){
@@ -576,38 +585,40 @@ function gameStep(){
   if (gameOver){ updateHud(); return; }
 
   if (isRunning){
-    // 유령 점증
+    // 유령 스폰 정책: 숨김 시간 이후, 목표 수까지 2초 간격으로 한 마리씩 재등장
     const sec = (performance.now() - startTime) / 1000;
-    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 25));
-    while (ghosts.length < target){
-      const palette = ['#ff4d4d','#7ad1ff','#ff99ff','#ffd166','#66ffa3','#ffb26b'];
-      const color = palette[(ghosts.length-1)%palette.length];
+    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 25)); // 항상 4로 고정하려면: const target = MAX_GHOSTS;
+    const now = nowMs();
+
+    if (now >= ghostsHiddenUntil && ghosts.length < target && now >= nextGhostRespawnAt) {
+      const palette = ['#ff4d4d','#7ad1ff','#ff99ff','#ffd166'];
+      const color = palette[ghosts.length % palette.length];
       addGhostRandom(color);
+      nextGhostRespawnAt = now + 5000; //5초 간격
     }
 
     // ⭐ 별 스폰/만료 관리
-    const now = nowMs();
     trySpawnStar(now);
     if (star && now >= star.expireAt){
-      star = null;                 // 못 먹었을 때 15초 후 사라짐
-      nextStarSpawnAt = now + 10000; // 10초 뒤 다시 등장
+      star = null;
+      nextStarSpawnAt = now + 10000;
     }
 
     movePacman();
     maybeConsumeStar(); // 별 먹음 체크
-
     ghosts.forEach(moveGhost);
 
     // 충돌 - 파워 중에는 무적
     if (hitGhost()){
-      if (nowMs() >= powerActiveUntil){
+      if (now >= powerActiveUntil){
         applyFreezePenalty();
       }
     }
 
     elapsed = (performance.now() - startTime) / 1000;
 
-    if (pellets.size===0 && !star){ // 남은 펠릿/별 없으면 클리어
+    // 남은 펠릿/별 없으면 클리어
+    if (pellets.size===0 && !star){
       gameOver = true;
       endTitle.textContent = '🎉 클리어!';
       finalTime.textContent = `기록: ${elapsed.toFixed(2)}초`;
@@ -658,7 +669,7 @@ const joyKnob = document.getElementById('joyKnob');
 let joyActive=false;
 let joyCenter={x:0,y:0};
 /* ⬇ 50% 축소에 맞춰 반경도 60 → 30 */
-const MAX_RADIUS=30;
+const MAX_RADIUS=60;
 
 function showJoystick(x,y){ joy.style.left=x+'px'; joy.style.top=y+'px'; joy.style.opacity=1; }
 function hideJoystick(){ joy.style.opacity=0; }
@@ -671,8 +682,15 @@ function setKnob(dx,dy){
   joyKnob.style.left = (joyCenter.x + nx) + 'px';
   joyKnob.style.top  = (joyCenter.y + ny) + 'px';
 
-  if (len<10){ pacman.want={x:0,y:0}; return; }
-  pacman.want = (Math.abs(dx)>=Math.abs(dy)) ? {x:Math.sign(dx), y:0} : {x:0, y:Math.sign(dy)};
+  if (len<5){ pacman.want={x:0,y:0}; return; }
+
+  const dir = (Math.abs(dx)>=Math.abs(dy)) 
+  ? {x:Math.sign(dx), y:0} 
+  : {x:0, y:Math.sign(dy)};
+pacman.want = dir;
+pacman.dir  = dir; // 👈 즉시 반영
+
+  
   if (!isRunning){ isRunning=true; if (!startTime) startTime=performance.now(); }
 }
 
@@ -723,6 +741,9 @@ function resetGame(){
   star = null;
   powerActiveUntil = 0;
   nextStarSpawnAt = nowMs() + 10000; // 시작 후 10초 뒤 첫 별
+
+  ghostsHiddenUntil = 0;
+  nextGhostRespawnAt = 0;
 
   updateHud();
 }
