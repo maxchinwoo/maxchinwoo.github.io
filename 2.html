@@ -83,7 +83,7 @@
   .overlay h2 { margin: 0 0 8px 0; }
   .overlay p { margin: 4px 0; }
 
-  /* === 동적 조이스틱 === */
+  /* === 동적 조이스틱 (50% 축소) === */
   .joystick {
     position: absolute;
     left: 0; top: 0;
@@ -94,8 +94,8 @@
   }
   .joy-base {
     position: absolute;
-    width: 160px; height: 160px;
-    margin-left: -80px; margin-top: -80px;
+    width: 80px; height: 80px;
+    margin-left: -40px; margin-top: -40px;
     border-radius: 50%;
     background: radial-gradient(ellipse at center, #1b1b1b 0%, #121212 70%);
     border: 2px solid #3a3a3a;
@@ -103,8 +103,8 @@
   }
   .joy-knob {
     position: absolute;
-    width: 88px; height: 88px;
-    margin-left: -44px; margin-top: -44px;
+    width: 44px; height: 44px;
+    margin-left: -22px; margin-top: -22px;
     border-radius: 50%;
     background: radial-gradient(ellipse at center, #2a2a2a 0%, #1d1d1d 70%);
     border: 2px solid #5a5a5a;
@@ -156,10 +156,11 @@ const ROWS = 15, COLS = 15;
 const TILE = canvas.width / COLS;   // 420/15 = 28
 const HALF = TILE / 2;
 
-const BASE_SPEED = 4;
-const SPEED_MULT = 0.25;
+const BASE_SPEED = 5;
+const SPEED_MULT = 0.3;
 const SPEED = BASE_SPEED * SPEED_MULT;       // px/frame (격자선 이동)
 const GHOST_SPEED = SPEED * 0.9;
+const POWER_SPEED_MULT = 2.0;                // ⭐ 별 먹었을 때 배속
 
 const DOT_RADIUS = 3;
 const PELLET_SCORE = 10;
@@ -178,6 +179,19 @@ let startTime = null;
 let elapsed = 0;
 let isRunning = false;
 let gameOver = false;
+
+/* ⭐ 파워별(큰별) 상태 */
+let star = null;                 // {r,c, appearAt, expireAt}
+let nextStarSpawnAt = 0;         // ms (별이 사라지거나 먹힌 후 10초 뒤)
+let powerActiveUntil = 0;        // ms (무적+가속 5초)
+
+/* 포털 좌표(경계 중앙 4곳) */
+const PORTALS = {
+  LEFT:  { r: Math.floor(ROWS/2), c: 0 },
+  RIGHT: { r: Math.floor(ROWS/2), c: COLS-1 },
+  TOP:   { r: 0, c: Math.floor(COLS/2) },
+  BOTTOM:{ r: ROWS-1, c: Math.floor(COLS/2) }
+};
 
 const pacman = {
   r: 1, c: 1,               // 셀 좌표
@@ -275,13 +289,19 @@ function placeRandomWallsWithConstraints(){
   }
 }
 
-/* ====== 맵 생성: 테두리=벽, 내부=길 → 제약 충족 벽 배치 ====== */
+/* ====== 맵 생성: 테두리=벽, 내부=길 → 제약 충족 벽 배치 + 포털 생성 ====== */
 function generateMaze(){
   maze = Array.from({length:ROWS},()=>Array(COLS).fill(0));
 
   // 테두리 벽
   for (let r=0;r<ROWS;r++){ maze[r][0]=1; maze[r][COLS-1]=1; }
   for (let c=0;c<COLS;c++){ maze[0][c]=1; maze[ROWS-1][c]=1; }
+
+  // 포털 구멍(경계 중앙 4개) 뚫기
+  maze[PORTALS.LEFT.r][PORTALS.LEFT.c] = 0;
+  maze[PORTALS.RIGHT.r][PORTALS.RIGHT.c] = 0;
+  maze[PORTALS.TOP.r][PORTALS.TOP.c] = 0;
+  maze[PORTALS.BOTTOM.r][PORTALS.BOTTOM.c] = 0;
 
   // 시작 구역(1..3,1..3) 비우기
   for (let r=1;r<=3;r++) for (let c=1;c<=3;c++) maze[r][c]=0;
@@ -327,6 +347,22 @@ function placeActors(){
   addGhostRandom('#7ad1ff');
 }
 
+/* ====== 포털 워프 ====== */
+function portalWrap(actor){
+  // 좌우
+  if (actor.r === PORTALS.LEFT.r && actor.c === PORTALS.LEFT.c){
+    actor.c = COLS - 2; // 오른쪽 안쪽 칸으로 워프
+  } else if (actor.r === PORTALS.RIGHT.r && actor.c === PORTALS.RIGHT.c){
+    actor.c = 1;        // 왼쪽 안쪽 칸으로 워프
+  }
+  // 상하
+  else if (actor.c === PORTALS.TOP.c && actor.r === PORTALS.TOP.r){
+    actor.r = ROWS - 2; // 아래쪽 안쪽 칸으로 워프
+  } else if (actor.c === PORTALS.BOTTOM.c && actor.r === PORTALS.BOTTOM.r){
+    actor.r = 1;        // 위쪽 안쪽 칸으로 워프
+  }
+}
+
 /* ====== 이동 (격자 스냅) ====== */
 function canMove(r,c){ return inBounds(r,c) && maze[r][c]===0; }
 
@@ -348,6 +384,7 @@ function stepAlongGrid(actor, speed){
     if (actor._acc >= TILE){
       actor._acc -= TILE;
       actor.r = nr; actor.c = nc;
+      portalWrap(actor); // 포털 처리
     }
   } else {
     actor.dir = {x:0,y:0};
@@ -359,7 +396,10 @@ function stepAlongGrid(actor, speed){
 function movePacman(){
   if (nowMs() < pacman.frozenUntil) return;
   if ((pacman.dir.x===0 && pacman.dir.y===0) || pacman._acc===0) tryTurnGrid(pacman);
-  stepAlongGrid(pacman, SPEED);
+
+  const now = nowMs();
+  const boost = (now < powerActiveUntil) ? POWER_SPEED_MULT : 1;
+  stepAlongGrid(pacman, SPEED * boost);
 
   const key = `${pacman.r},${pacman.c}`;
   if (pellets.has(key)){ pellets.delete(key); score += PELLET_SCORE; }
@@ -399,6 +439,40 @@ function applyFreezePenalty(){
   pacman.hurtTintUntil = nowMs() + 500;
 }
 
+/* ====== 별(파워업) 로직 ====== */
+function spawnStarFromPellets(){
+  if (pellets.size === 0) return false;
+  const idx = Math.floor(Math.random()*pellets.size);
+  let i=0, chosen=null;
+  for (const k of pellets){ if (i===idx){ chosen=k; break; } i++; }
+  if (!chosen) return false;
+  const [r,c] = chosen.split(',').map(Number);
+  pellets.delete(chosen); // 펠릿 -> 별로 변환
+  const now = nowMs();
+  star = { r, c, appearAt: now, expireAt: now + 15000 }; // 15초 후 사라짐
+  return true;
+}
+
+function trySpawnStar(now){
+  if (star) return;
+  if (now >= nextStarSpawnAt){
+    const ok = spawnStarFromPellets();
+    if (!ok){
+      // 펠릿이 없으면 다음 기회 연기
+      nextStarSpawnAt = now + 10000;
+    }
+  }
+}
+
+function maybeConsumeStar(){
+  if (!star) return;
+  if (pacman.r === star.r && pacman.c === star.c){
+    star = null;
+    powerActiveUntil = nowMs() + 8000; // 5초 유지
+    nextStarSpawnAt = nowMs() + 10000; // 10초 후 재등장
+  }
+}
+
 /* ====== 그리기 ====== */
 function drawMaze(){
   for (let r=0;r<ROWS;r++){
@@ -409,6 +483,7 @@ function drawMaze(){
       }
     }
   }
+  // 펠릿
   ctx.fillStyle = '#ffd54a';
   pellets.forEach(k=>{
     const [r,c] = k.split(',').map(Number);
@@ -417,13 +492,53 @@ function drawMaze(){
     ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI*2);
     ctx.fill();
   });
+
+  // ⭐ 큰별
+  if (star){
+    drawStar(star.c*TILE + HALF, star.r*TILE + HALF, DOT_RADIUS*2.0, '#fff27a', '#ffd700');
+  }
 }
+
+function drawStar(cx, cy, radius, fill, stroke){
+  // 간단한 5각 별
+  const spikes = 5;
+  let rot = Math.PI / 2 * 3;
+  let x = cx, y = cy;
+  const step = Math.PI / spikes;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - radius);
+  for (let i = 0; i < spikes; i++) {
+    x = cx + Math.cos(rot) * radius;
+    y = cy + Math.sin(rot) * radius;
+    ctx.lineTo(x, y);
+    rot += step;
+
+    x = cx + Math.cos(rot) * (radius * 0.5);
+    y = cy + Math.sin(rot) * (radius * 0.5);
+    ctx.lineTo(x, y);
+    rot += step;
+  }
+  ctx.lineTo(cx, cy - radius);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = stroke;
+  ctx.stroke();
+}
+
 function drawPacman(){
   const frozen = nowMs() < pacman.frozenUntil;
   const hurt = nowMs() < pacman.hurtTintUntil;
   const cx = pacman.c*TILE + HALF, cy = pacman.r*TILE + HALF;
 
-  ctx.fillStyle = hurt ? '#ff6b6b' : '#ffeb3b';
+
+
+  const isPower = nowMs() < powerActiveUntil;
+  ctx.fillStyle = isPower ? '#00ff00' : (hurt ? '#ff6b6b' : '#ffeb3b');
+
+
   const mouthOpen = frozen ? 0.1 : 0.35;
   const ang = Math.atan2(pacman.dir.y, pacman.dir.x) || 0;
   ctx.beginPath();
@@ -451,7 +566,9 @@ function drawGhost(g){
 /* HUD */
 function updateHud(){
   const t = isRunning && startTime ? ((performance.now() - startTime)/1000) : elapsed;
-  hud.innerHTML = `SCORE: ${score}<br/>TIME: ${t.toFixed(2)}s`;
+  const leftPower = Math.max(0, powerActiveUntil - nowMs());
+  const powerTxt = leftPower > 0 ? ` | POWER: ${(leftPower/1000).toFixed(1)}s` : '';
+  hud.innerHTML = `SCORE: ${score}${powerTxt}<br/>TIME: ${t.toFixed(2)}s`;
 }
 
 /* 루프 */
@@ -459,23 +576,38 @@ function gameStep(){
   if (gameOver){ updateHud(); return; }
 
   if (isRunning){
-    // 10초마다 유령 추가 (최대 6)
+    // 유령 점증
     const sec = (performance.now() - startTime) / 1000;
-    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 10));
+    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 25));
     while (ghosts.length < target){
       const palette = ['#ff4d4d','#7ad1ff','#ff99ff','#ffd166','#66ffa3','#ffb26b'];
       const color = palette[(ghosts.length-1)%palette.length];
       addGhostRandom(color);
     }
 
+    // ⭐ 별 스폰/만료 관리
+    const now = nowMs();
+    trySpawnStar(now);
+    if (star && now >= star.expireAt){
+      star = null;                 // 못 먹었을 때 15초 후 사라짐
+      nextStarSpawnAt = now + 10000; // 10초 뒤 다시 등장
+    }
+
     movePacman();
+    maybeConsumeStar(); // 별 먹음 체크
+
     ghosts.forEach(moveGhost);
 
-    if (hitGhost()) applyFreezePenalty();
+    // 충돌 - 파워 중에는 무적
+    if (hitGhost()){
+      if (nowMs() >= powerActiveUntil){
+        applyFreezePenalty();
+      }
+    }
 
     elapsed = (performance.now() - startTime) / 1000;
 
-    if (pellets.size===0){
+    if (pellets.size===0 && !star){ // 남은 펠릿/별 없으면 클리어
       gameOver = true;
       endTitle.textContent = '🎉 클리어!';
       finalTime.textContent = `기록: ${elapsed.toFixed(2)}초`;
@@ -525,7 +657,8 @@ const joyKnob = document.getElementById('joyKnob');
 
 let joyActive=false;
 let joyCenter={x:0,y:0};
-const MAX_RADIUS=60;
+/* ⬇ 50% 축소에 맞춰 반경도 60 → 30 */
+const MAX_RADIUS=30;
 
 function showJoystick(x,y){ joy.style.left=x+'px'; joy.style.top=y+'px'; joy.style.opacity=1; }
 function hideJoystick(){ joy.style.opacity=0; }
@@ -585,6 +718,12 @@ function resetGame(){
   generateMaze();
   scatterPellets();
   placeActors();
+
+  // ⭐ 별/파워 초기화
+  star = null;
+  powerActiveUntil = 0;
+  nextStarSpawnAt = nowMs() + 10000; // 시작 후 10초 뒤 첫 별
+
   updateHud();
 }
 resetBtn.addEventListener('click', resetGame);

@@ -156,8 +156,8 @@ const ROWS = 15, COLS = 15;
 const TILE = canvas.width / COLS;   // 420/15 = 28
 const HALF = TILE / 2;
 
-const BASE_SPEED = 4;
-const SPEED_MULT = 0.25;
+const BASE_SPEED = 5;
+const SPEED_MULT = 0.3;
 const SPEED = BASE_SPEED * SPEED_MULT;       // px/frame (격자선 이동)
 const GHOST_SPEED = SPEED * 0.9;
 const POWER_SPEED_MULT = 2.0;                // ⭐ 별 먹었을 때 배속
@@ -578,7 +578,7 @@ function gameStep(){
   if (isRunning){
     // 유령 점증
     const sec = (performance.now() - startTime) / 1000;
-    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 10));
+    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 25));
     while (ghosts.length < target){
       const palette = ['#ff4d4d','#7ad1ff','#ff99ff','#ffd166','#66ffa3','#ffb26b'];
       const color = palette[(ghosts.length-1)%palette.length];
