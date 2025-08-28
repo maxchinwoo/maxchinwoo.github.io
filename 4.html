@@ -65,7 +65,10 @@ function resetGame(){
   requestAnimationFrame(loop);
 }
 document.getElementById("resetBtn").onclick=resetGame;
-document.getElementById("homeBtn").onclick=()=>location.reload();
+document.getElementById("homeBtn").onclick = () => {
+  location.href = "index.html";
+};
+
 
 // 타이머
 function tick(){
