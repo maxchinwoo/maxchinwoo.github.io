@@ -1,128 +1,204 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>숫자 터치 게임</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-    }
-    #controls {
-      margin: 20px;   /* 숫자 테이블과 위쪽 컨트롤 사이 간격 */
-      display: flex;
-      gap: 20px;      /* 점수와 버튼 간격 */
-      align-items: center;
-      justify-content: center;
-    }
-    #game {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(4, 1fr);
-      gap: 5px;
-      width: 100vw;
-      height: 100vw; /* 정사각형으로 화면 꽉 차게 */
-      max-width: 100vh; /* 세로가 더 짧으면 맞춤 */
-      max-height: 100vh;
-    }
-    .cell {
-      background: #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 4em;
-      font-weight: bold;
-      border-radius: 8px;
-      cursor: pointer;
-      user-select: none;
-      touch-action: manipulation; /* 모바일 터치 지연 방지 */
-    }
-    .cell:active {
-      background: #ddd;
-    }
-    #status {
-      font-size: 3em;   /* 점수 글씨 크게 */
-    }
-    #resetBtn {
-      padding: 12px 24px;  /* 버튼 크기 2배 */
-      font-size: 2em;      /* 버튼 글씨 2배 */
-      border: none;
-      border-radius: 10px;
-      background: #007bff;
-      color: white;
-      cursor: pointer;
-    }
-    #resetBtn:hover {
-      background: #0056b3;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>랜덤 성경구절 (한/영 동일)</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#101620; --card:#0f1520; --pri:#49a2ff; --txt:#e8f1ff; --sub:#a7bed3;
+    --ok:#3bd16f; --warn:#ffb74e; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,Arial,sans-serif}
+  a{color:var(--pri);text-decoration:none}
+  .wrap{max-width:880px;margin:0 auto;padding:14px}
+  .topbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .brand{font-weight:800;font-size:18px}
+  .small{color:var(--sub);font-size:12px}
+  .panel{background:var(--panel);border:1px solid #1e2733;border-radius:14px;padding:12px;margin-bottom:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:760px){.row{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid #1a2330;border-radius:16px;padding:14px}
+  .lang{font-size:12px;color:var(--sub);margin-bottom:4px}
+  .ref{font-size:14px;color:var(--sub);margin-bottom:8px}
+  .text{font-size:22px;line-height:1.65;white-space:pre-wrap}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button{
+    cursor:pointer;border:none;border-radius:14px;background:var(--pri);color:#fff;
+    padding:14px 18px;font-weight:800;font-size:18px;width:100%
+  }
+  button.ghost{background:#182232;color:var(--txt);border:1px solid #243247}
+  .status{font-size:12px;margin-top:8px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  .footer{margin-top:14px;font-size:12px;color:var(--sub)}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{display:inline-flex;align-items:center;gap:6px;background:#122136;border:1px solid #25324b;border-radius:999px;padding:6px 10px;font-size:12px}
+</style>
 </head>
 <body>
-  <div id="controls">
-    <div id="status">⏱ 기록: -</div>
-    <button id="resetBtn">🔄 리셋</button>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">📖 랜덤 성경구절 (한/영 동일)</div>
+    <div class="tags">
+      <a class="tag" href="./index.html">홈</a>
+      <a class="tag" href="https://pages.github.com/" target="_blank" rel="noopener">GitHub Pages</a>
+    </div>
   </div>
-  <div id="game"></div>
 
-  <script>
-    const gameContainer = document.getElementById("game");
-    const statusDiv = document.getElementById("status");
-    const resetBtn = document.getElementById("resetBtn");
-    let numbers = [];
-    let nextNumber = 1;
-    let startTime = null;
+  <div class="panel">
+    <div class="small" style="margin-bottom:10px">
+      • 한국어는 <b>로컬 JSON</b>(예: <code>korrrv.json</code>)에서 구절을 무작위로 선택합니다.<br/>
+      • 영어는 동일한 구절을 <b>WEB</b>(World English Bible, bible-api.com)로 가져와 나란히 보여줍니다.<br/>
+      • 스마트폰에서 보기 쉽도록 큰 글씨와 단일 버튼으로 구성했습니다.
+    </div>
+    <div class="btns">
+      <button id="btnRandom">🎲 오늘의 랜덤 구절 (한/영 동일)</button>
+      <button class="ghost" id="btnCopy">📋 복사</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
 
-    // 배열 섞기
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+  <div class="row">
+    <div class="card">
+      <div class="lang">한국어 (로컬)</div>
+      <div class="ref" id="koRef">-</div>
+      <div class="text" id="koText">버튼을 눌러 랜덤 구절을 표시하세요.</div>
+    </div>
+    <div class="card">
+      <div class="lang">English (WEB)</div>
+      <div class="ref" id="enRef">-</div>
+      <div class="text" id="enText">Press the button to show a matched verse.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="small">
+      * 로컬 파일명은 기본 <code>korrrv.json</code> 입니다. 다른 이름을 쓰면 스크립트 상단 <code>KOR_JSON_PATH</code>를 수정하세요.<br/>
+      * WEB은 퍼블릭 도메인 번역이며, bible-api.com을 통해 구체 절로 요청합니다.
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== 설정 ===== */
+const KOR_JSON_PATH = './korrrv.json'; // 로컬 한국어 데이터 경로(필요하면 './korrrv1.json'으로 변경)
+const BIBLE_API_BASE = 'https://bible-api.com'; // 영어 WEB(무료 1종)만 사용
+
+/* ===== 요소 ===== */
+const els = {
+  btnRandom: document.getElementById('btnRandom'),
+  btnCopy: document.getElementById('btnCopy'),
+  status: document.getElementById('status'),
+  koRef: document.getElementById('koRef'),
+  koText: document.getElementById('koText'),
+  enRef: document.getElementById('enRef'),
+  enText: document.getElementById('enText'),
+};
+
+/* ===== 한국어 책명 → 영어 책명 매핑 (bible-api.com용) =====
+   일부는 여러 표기를 시도(아가: Song of Songs/Solomon 등)  */
+const BOOK_MAP = {
+  '창세기':'Genesis','출애굽기':'Exodus','레위기':'Leviticus','민수기':'Numbers','신명기':'Deuteronomy',
+  '여호수아':'Joshua','사사기':'Judges','룻기':'Ruth',
+  '사무엘상':'1 Samuel','사무엘하':'2 Samuel','열왕기상':'1 Kings','열왕기하':'2 Kings',
+  '역대상':'1 Chronicles','역대하':'2 Chronicles','에스라':'Ezra','느헤미야':'Nehemiah','에스더':'Esther',
+  '욥기':'Job','시편':'Psalms','잠언':'Proverbs','전도서':'Ecclesiastes',
+  '아가':['Song of Songs','Song of Solomon'],
+  '이사야':'Isaiah','예레미야':'Jeremiah','예레미야애가':'Lamentations','에스겔':'Ezekiel','다니엘':'Daniel',
+  '호세아':'Hosea','요엘':'Joel','아모스':'Amos','오바댜':'Obadiah','요나':'Jonah','미가':'Micah',
+  '나훔':'Nahum','하박국':'Habakkuk','스바냐':'Zephaniah','학개':'Haggai','스가랴':'Zechariah','말라기':'Malachi',
+  '마태복음':'Matthew','마가복음':'Mark','누가복음':'Luke','요한복음':'John','사도행전':'Acts',
+  '로마서':'Romans','고린도전서':'1 Corinthians','고린도후서':'2 Corinthians','갈라디아서':'Galatians',
+  '에베소서':'Ephesians','빌립보서':'Philippians','골로새서':'Colossians',
+  '데살로니가전서':'1 Thessalonians','데살로니가후서':'2 Thessalonians',
+  '디모데전서':'1 Timothy','디모데후서':'2 Timothy','디도서':'Titus','빌레몬서':'Philemon',
+  '히브리서':'Hebrews','야고보서':'James','베드로전서':'1 Peter','베드로후서':'2 Peter',
+  '요한일서':'1 John','요한이서':'2 John','요한삼서':'3 John','유다서':'Jude','요한계시록':'Revelation'
+};
+
+/* ===== 유틸 ===== */
+function setStatus(msg, cls){ els.status.textContent = msg; els.status.className = 'status ' + (cls||''); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)] }
+async function fetchJson(url, opt){ const r = await fetch(url, opt); if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
+
+/* ===== 한국어 로컬에서 무작위 구절 선택 ===== */
+async function getRandomKoFromLocal(){
+  const obj = await fetchJson(KOR_JSON_PATH);
+  if(!obj?.books?.length) throw new Error('로컬 JSON 구조 오류(books 없음)');
+  // 책 → 장 → 절 선택 (빈 장/절 회피)
+  for(let tries=0; tries<20; tries++){
+    const b = pick(obj.books);
+    const chs = Array.isArray(b.chapters) ? b.chapters.filter(c=>Array.isArray(c.verses) && c.verses.length) : [];
+    if(!chs.length) continue;
+    const c = pick(chs);
+    const v = pick(c.verses);
+    if(!v || !v.number || !v.text) continue;
+    return { bookKo:b.name, chap:c.number, verse:v.number, text:v.text.trim() };
+  }
+  throw new Error('유효한 장/절을 찾지 못했습니다.');
+}
+
+/* ===== 같은 구절을 영어 WEB에서 가져오기 ===== */
+async function getEnglishFor(bookKo, chap, verse){
+  let names = BOOK_MAP[bookKo];
+  if(!names) throw new Error(`책명 매핑 없음: ${bookKo}`);
+  if(!Array.isArray(names)) names = [names];
+  let lastErr = null;
+  for(const bookEn of names){
+    try{
+      const q = encodeURIComponent(`${bookEn} ${chap}:${verse}`);
+      const data = await fetchJson(`${BIBLE_API_BASE}/${q}?translation=web`);
+      if(data && data.text && data.reference){
+        return { bookEn: bookEn, text: data.text.trim(), refEn: data.reference };
       }
-      return array;
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('영어 구절 수신 실패');
+}
+
+/* ===== 렌더 ===== */
+function renderBoth(koRef, koText, enRef, enText){
+  els.koRef.textContent = koRef;
+  els.koText.textContent = koText;
+  els.enRef.textContent = enRef;
+  els.enText.textContent = enText;
+}
+
+/* ===== 메인 버튼 ===== */
+els.btnRandom.addEventListener('click', async ()=>{
+  setStatus('불러오는 중…', '');
+  try{
+    // 1) 한국어(로컬)에서 무작위 구절 선택
+    const ko = await getRandomKoFromLocal(); // {bookKo, chap, verse, text}
+    const koRef = `${ko.bookKo} ${ko.chap}:${ko.verse}`;
+
+    // 2) 동일 구절을 영어 WEB에서 가져오기
+    let en;
+    try{
+      en = await getEnglishFor(ko.bookKo, ko.chap, ko.verse);
+    }catch(err){
+      // 영어 실패시: 한국어만 표기 + 상태 경고
+      renderBoth(koRef, ko.text, '(영어 불러오기 실패)', '—');
+      setStatus(`영어 구절 로딩 실패: ${err?.message||err}`, 'warn');
+      return;
     }
 
-    // 게임 초기화
-    function initGame() {
-      numbers = shuffle([...Array(16).keys()].map(n => n + 1));
-      nextNumber = 1;
-      startTime = null;
-      gameContainer.innerHTML = "";
-      numbers.forEach(num => {
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.textContent = num;
-        cell.onclick = () => handleClick(num, cell);
-        gameContainer.appendChild(cell);
-      });
-      statusDiv.textContent = "⏱ 기록: -";
-    }
+    // 3) 렌더
+    renderBoth(koRef, ko.text, en.refEn, en.text);
+    setStatus('완료', 'ok');
+  }catch(err){
+    setStatus('오류: ' + (err?.message || err), 'err');
+  }
+});
 
-    // 숫자 클릭 처리
-    function handleClick(num, cell) {
-      if (num === nextNumber) {
-        if (num === 1) {
-          startTime = new Date();
-        }
-        cell.style.background = "#90ee90"; // 초록색으로 표시
-        if (num === 16) {
-          const endTime = new Date();
-          const record = ((endTime - startTime) / 1000).toFixed(2);
-          statusDiv.textContent = `🎉 완료! 기록: ${record}초`;
-        }
-        nextNumber++;
-      }
-    }
-
-    // 리셋 버튼 이벤트
-    resetBtn.onclick = () => initGame();
-
-    // 시작
-    initGame();
-  </script>
+/* ===== 복사 ===== */
+els.btnCopy.addEventListener('click', ()=>{
+  const t = `[${els.koRef.textContent}] ${els.koText.textContent}\n[${els.enRef.textContent}] ${els.enText.textContent}`;
+  navigator.clipboard.writeText(t).then(()=> setStatus('클립보드로 복사됨', 'ok'))
+  .catch(e=> setStatus('복사 실패: ' + e.message, 'err'));
+});
+</script>
 </body>
 </html>
