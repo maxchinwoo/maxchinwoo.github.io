@@ -1,152 +1,238 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>덧셈 연습 게임</title>
 <style>
+  :root{
+    --wrap-h: 100dvh;
+    --hud-h: 44px;
+    --controls-h: 34dvh;
+    --canvas-h: calc(var(--wrap-h) - var(--hud-h) - var(--controls-h) - 16px);
+  }
+  *{ box-sizing: border-box; }
   body { margin:0; background:#000; color:#fff; font-family:sans-serif; text-align:center; }
-  canvas { background:#111; display:block; margin:10px auto; border:2px solid #1e90ff; border-radius:8px; }
-  .controls { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin-top:10px; }
-  button {
-    width:60px; height:60px; font-size:24px;
-    border:none; border-radius:8px; background:#1e90ff; color:#fff; cursor:pointer;
+
+  .wrap{
+    height: var(--wrap-h);
+    display: grid;
+    grid-template-rows: var(--hud-h) 1fr var(--controls-h) auto;
+    gap: 8px;
+    padding: 8px;
   }
-  #resetBtn, #homeBtn {
-    width:auto; padding:8px 16px; font-size:18px; margin:10px;
+
+  #hud { font-size:18px; display:flex; align-items:center; justify-content:center; }
+
+  .canvasBox{
+    display:flex; justify-content:center; align-items:center;
+    height: var(--canvas-h);
+    min-height: 220px;
   }
-  #hud { margin:10px; font-size:18px; }
+  canvas {
+    background:#111;
+    border:2px solid #1e90ff; border-radius:8px;
+    max-width: 100%;
+    max-height: 100%;
+    width: min(480px, 92vw);
+    height: 100%;
+  }
+
+  .controls { 
+    display:grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: 1fr;
+    gap:8px; 
+    padding: 0 8px;
+    align-items: stretch;
+  }
+  .controls button{
+    width: 100%; height: 100%;
+    font-size: clamp(18px, 3.8vw, 24px);
+    border:none; border-radius:10px; background:#1e90ff; color:#fff; cursor:pointer;
+    padding: 8px;
+  }
+
+  .actions{
+    display:flex; justify-content:center; gap:10px; padding-bottom: 6px;
+  }
+  #resetBtn, #homeBtn, #enterBtn {
+    padding:8px 16px; font-size:16px; border:none; border-radius:10px; background:#1e90ff; color:#fff; cursor:pointer;
+  }
+
+  @media (min-width: 768px){
+    :root{ --controls-h: 28dvh; }
+    .controls button{ font-size: 20px; }
+  }
+  @media (max-width: 380px){
+    :root{
+      --hud-h: 40px;
+      --controls-h: 36dvh;
+    }
+  }
 </style>
 </head>
 <body>
-<h2>🧮 덧셈 연습 게임</h2>
-<canvas id="game" width="400" height="500"></canvas>
-<div id="hud">LEVEL: 1 | TIME: 60</div>
-<div class="controls" id="numPad"></div>
-<button id="enterBtn">입력</button>
-<div>
-  <button id="resetBtn">🔄 리셋</button>
-  <button id="homeBtn">🏠 홈</button>
+<div class="wrap">
+  <div id="hud">LEVEL: 1 | TIME: 60</div>
+
+  <div class="canvasBox">
+    <canvas id="game"></canvas>
+  </div>
+
+  <div class="controls" id="numPad"></div>
+
+  <div class="actions">
+    <button id="enterBtn">입력</button>
+    <button id="resetBtn">🔄 리셋</button>
+    <button id="homeBtn">🏠 홈</button>
+  </div>
 </div>
 
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-const hud=document.getElementById("hud");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const hud = document.getElementById("hud");
 
-let problems=[];
-let level=1, timeLeft=40, score=0;
-let currentInput="";
-let isRunning=false, timerId=null;
-let fallSpeed=1.2; // 기본 속도
+function resizeCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.max(300, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(380, Math.floor(rect.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = "20px Arial";
+}
+window.addEventListener('resize', resizeCanvas);
 
-// 문제 생성 (두자리수 + 한자리수)
+let problems = [];
+let level = 1, timeLeft = 60, score = 0;
+let currentInput = "";
+let isRunning = false;
+let timerId = null;
+let spawnTimer = null;
+let fallSpeed = 1.2;
+
 function makeProblem(){
-  const a=Math.floor(Math.random()*90)+10; // 10~99
-  const b=Math.floor(Math.random()*9)+1;   // 1~9
-  return {text:`${a}+${b}`, ans:a+b, x:Math.random()*300+20, y:0};
+  const a = Math.floor(Math.random()*90)+10; // 10~99
+  const b = Math.floor(Math.random()*9)+1;   // 1~9
+  const maxX = Math.max(40, canvas.getBoundingClientRect().width - 40);
+  const x = Math.random()* (maxX - 40) + 20;
+  return { text:`${a}+${b}`, ans:a+b, x, y: 0 };
 }
 
-// 레벨별 속도 설정
 function setLevelSpeed(){
-  if(level===1) fallSpeed=1.2*0.2; // 70%
-  else if(level===2) fallSpeed=1.2*0.3; // 60%
-  else if(level===3) fallSpeed=1.2*0.4; // 50%
+  if(level === 1)      fallSpeed = 1.2 * 0.2;
+  else if(level === 2) fallSpeed = 1.2 * 0.3;
+  else if(level === 3) fallSpeed = 1.2 * 0.4;
 }
 
-// 게임 리셋
+/* 레벨별 생성 주기: 화면에 문제가 1개도 없을 때만 새로 생성 */
+function setSpawnTimer(){
+  if (spawnTimer) clearInterval(spawnTimer);
+  let intervalMs = (level >= 2) ? 4000 : 5000;
+
+  spawnTimer = setInterval(()=>{
+    if(!isRunning) return;
+    if (problems.length === 0) {          // ✅ 여기 조건 추가(핵심 수정)
+      problems.push(makeProblem());
+    }
+  }, intervalMs);
+}
+
 function resetGame(){
-  level=1; timeLeft=40; score=0;
-  problems=[]; currentInput="";
+  level = 1; timeLeft = 60; score = 0;
+  problems = []; currentInput = "";
+  isRunning = true;
+
   setLevelSpeed();
-  isRunning=true;
+  setSpawnTimer();
+
   clearInterval(timerId);
-  timerId=setInterval(tick,1000);
-  requestAnimationFrame(loop);
+  timerId = setInterval(tick, 1000);
+
+  resizeCanvas();
+  cancelAnimationFrame(_rafId);
+  _rafId = requestAnimationFrame(loop);
 }
-document.getElementById("resetBtn").onclick=resetGame;
-document.getElementById("homeBtn").onclick = () => {
-  location.href = "index.html";
-};
+document.getElementById("resetBtn").onclick = resetGame;
+document.getElementById("homeBtn").onclick = () => { location.href = "index.html"; };
 
-
-// 타이머
 function tick(){
   if(!isRunning) return;
   timeLeft--;
-  if(timeLeft<=0){
+  if(timeLeft <= 0){
     level++;
-    if(level>3){
+    if(level > 3){
       alert("🎉 모든 레벨 클리어! 승리!");
-      isRunning=false; clearInterval(timerId);
+      isRunning = false;
+      clearInterval(timerId);
+      if(spawnTimer) clearInterval(spawnTimer);
       return;
     }
-    timeLeft=40;
+    timeLeft = 60;
     setLevelSpeed();
+    setSpawnTimer(); // 레벨 변경 시 주기 갱신
     alert(`레벨 ${level} 시작!`);
   }
 }
 
-// 메인 루프
+let _rafId = 0;
 function loop(){
   if(!isRunning) return;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
 
-  // 문제 생성
-  if(Math.random()<0.005*level) problems.push(makeProblem());
+  ctx.clearRect(0,0,W,H);
 
-  // 문제 이동
-  problems.forEach(p=>p.y+=fallSpeed);
+  problems.forEach(p => p.y += fallSpeed);
 
-  // === 실패 조건 체크 ===
-  for(let p of problems){
-    if(p.y>=canvas.height-10){ 
+  for(const p of problems){
+    if(p.y >= H - 10){
       alert("💀 문제를 놓쳤습니다! 다시 시작하세요.");
       resetGame();
       return;
     }
   }
 
-  // 문제 그리기
-  ctx.fillStyle="#fff";
-  ctx.font="20px Arial";
-  problems.forEach(p=>{
-    ctx.fillText(p.text,p.x,p.y);
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Arial";
+  problems.forEach(p => {
+    ctx.fillText(p.text, p.x, p.y);
   });
 
-  // 현재 입력 표시
-  ctx.fillStyle="#0f0";
-  ctx.fillText("입력: "+currentInput,10,480);
+  ctx.fillStyle = "#0f0";
+  ctx.fillText("입력: " + currentInput, 10, Math.max(30, H - 20));
 
-  hud.textContent=`LEVEL: ${level} | TIME: ${timeLeft}s | SCORE: ${score}`;
-  requestAnimationFrame(loop);
+  hud.textContent = `LEVEL: ${level} | TIME: ${timeLeft}s | SCORE: ${score}`;
+  _rafId = requestAnimationFrame(loop);
 }
 
-// 입력 체크
-document.getElementById("enterBtn").onclick=()=>{
-  if(currentInput==="") return;
-  let num=parseInt(currentInput);
+document.getElementById("enterBtn").onclick = () => {
+  if(currentInput === "") return;
+  const num = parseInt(currentInput);
   for(let i=0;i<problems.length;i++){
-    if(problems[i].ans===num){
+    if(problems[i].ans === num){
       problems.splice(i,1);
       score++;
       break;
     }
   }
-  currentInput="";
+  currentInput = "";
 };
 
-// 번호키 UI 생성
-const pad=document.getElementById("numPad");
-for(let i=0;i<=9;i++){
-  const btn=document.createElement("button");
-  btn.textContent=i;
-  btn.onclick=()=>{ currentInput+=i; };
-  pad.appendChild(btn);
-}
+const pad = document.getElementById("numPad");
+(function buildPad(){
+  for(let i=0;i<=9;i++){
+    const btn = document.createElement("button");
+    btn.textContent = i;
+    btn.onclick = () => { currentInput += i; };
+    pad.appendChild(btn);
+  }
+})();
 
-// 시작
+resizeCanvas();
 resetGame();
 </script>
 </body>
 </html>
+
