@@ -1,741 +1,158 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<title>Pacman 15x15 Grid (snapped)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>2인 실시간 그림판</title>
 <style>
-  html, body {
-    margin: 0;
-    height: 100%;
-    background: #000;
-    color: #fff;
-    font-family: system-ui, Arial, sans-serif;
-    -webkit-touch-callout:none;
-    -webkit-user-select:none;
-    user-select:none;
-    touch-action: none;
-  }
-  .wrap {
-    position: relative;
-    height: 100vh;
-    display: grid;
-    grid-template-rows: auto 1fr;
-    overflow: hidden;
-    padding-top: env(safe-area-inset-top);
-  }
-  .topbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    justify-content: center;
-    padding: 6px 10px;
-  }
-  #resetBtn {
-    padding: 8px 14px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 10px;
-    background: #1e90ff;
-    color: #fff;
-    cursor: pointer;
-  }
-  #resetBtn:active { filter: brightness(0.9); }
-
-  .stage {
-    position: relative;
-    display: grid;
-    place-items: center;
-    transform: translateY(-2vh); /* 화면 살짝 위로 */
-  }
-
-  /* 캔버스는 정사각형, 15x15에 맞춤 */
-  canvas {
-    width: min(92vmin, 92vw, 92vh);
-    height: min(92vmin, 92vw, 92vh);
-    background: #000;
-    border: 2px solid #1e90ff;  /* 15x15 외곽 테두리 */
-    border-radius: 12px;
-    box-shadow: 0 0 20px rgba(30,144,255,0.3);
-    image-rendering: pixelated;
-  }
-
-  .hud {
-    position: absolute;
-    top: 10px; left: 50%;
-    transform: translateX(-50%);
-    font-size: 18px;
-    letter-spacing: .5px;
-    text-align: center;
-    white-space: nowrap;
-    pointer-events: none;
-  }
-  .overlay {
-    position: absolute;
-    inset: 0;
-    display: none;
-    place-items: center;
-    background: rgba(0,0,0,0.55);
-    text-align: center;
-    padding: 20px;
-  }
-  .overlay.show { display: grid; }
-  .overlay h2 { margin: 0 0 8px 0; }
-  .overlay p { margin: 4px 0; }
-
-  /* === 동적 조이스틱 (50% 축소) === */
-  .joystick {
-    position: absolute;
-    left: 0; top: 0;
-    width: 0; height: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .08s ease;
-  }
-  .joy-base {
-    position: absolute;
-    width: 80px; height: 80px;
-    margin-left: -40px; margin-top: -40px;
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center, #1b1b1b 0%, #121212 70%);
-    border: 2px solid #3a3a3a;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45), inset 0 0 14px rgba(255,255,255,0.06);
-  }
-  .joy-knob {
-    position: absolute;
-    width: 44px; height: 44px;
-    margin-left: -22px; margin-top: -22px;
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center, #2a2a2a 0%, #1d1d1d 70%);
-    border: 2px solid #5a5a5a;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.6), inset 0 0 10px rgba(30,144,255,0.3);
-  }
+  :root{--bg:#0b0f14;--panel:#121821;--card:#101725;--pri:#4ea1ff;--txt:#e8f1ff;--sub:#a7bed3;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,Arial}
+  header{padding:10px 14px;background:var(--panel);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  header > *{margin:0}
+  #roomInfo{font-size:14px;color:var(--sub)}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .toolbar input[type="color"], .toolbar input[type="range"], .toolbar button{cursor:pointer}
+  .wrap{padding:10px}
+  canvas{background:#0d1220;border:2px solid var(--pri);border-radius:10px;display:block;margin:0 auto;touch-action:none;max-width:100%;height:auto}
+  .hint{margin-top:8px;text-align:center;color:var(--sub);font-size:13px}
+  .badge{background:#1a2233;padding:4px 8px;border-radius:999px}
 </style>
 </head>
 <body>
-<div class="wrap" id="wrap">
-  <div class="topbar">
-    <button id="resetBtn">🔄 리셋</button>
-    <button id="homeBtn">🏠 홈</button>
+<header>
+  <h3 style="margin-right:8px">2인 실시간 그림판</h3>
+  <span id="roomInfo" class="badge">방: (연결 중...)</span>
+  <span id="peerInfo" class="badge">접속 인원: -</span>
+  <div class="toolbar">
+    선색 <input id="color" type="color" value="#ffffff"/>
+    굵기 <input id="size" type="range" min="1" max="40" value="6"/>
+    <button id="clearBtn">지우기</button>
   </div>
-
-  <div class="stage" id="stage">
-    <!-- 15x15 그리드를 정확히 채우는 420x420 -->
-    <canvas id="game" width="420" height="420"></canvas>
-    <div class="hud" id="hud">SCORE: 0<br/>TIME: 0.00s</div>
-
-    <div class="overlay" id="overlay">
-      <div>
-        <h2 id="endTitle">🎉 클리어!</h2>
-        <p id="finalTime">기록: -</p>
-        <p id="finalScore">점수: -</p>
-        <button id="overlayReset" style="padding:10px 16px;border:none;border-radius:10px;background:#1e90ff;color:#fff;cursor:pointer;">다시 시작</button>
-      </div>
-    </div>
-
-    <div class="joystick" id="joystick">
-      <div class="joy-base" id="joyBase"></div>
-      <div class="joy-knob" id="joyKnob"></div>
-    </div>
-  </div>
+</header>
+<div class="wrap">
+  <canvas id="board" width="1200" height="700"></canvas>
+  <div class="hint">같은 링크의 <b>?room=같은이름</b>으로 접속하면 같은 방에 들어옵니다. 최대 2명.</div>
 </div>
 
+<!-- Socket.IO client (CDN) -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-Qv4r7qjv0t0h9uLoa0TQbF7EAwl5aM4A2Kf1x3GfQb8ypkhV3C7aFj1JkZCj8QQY" crossorigin="anonymous"></script>
 <script>
-/* ====== 기본 설정 (15x15 전용) ====== */
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const hud = document.getElementById('hud');
-const overlay = document.getElementById('overlay');
-const endTitle = document.getElementById('endTitle');
-const finalTime = document.getElementById('finalTime');
-const finalScore = document.getElementById('finalScore');
-const overlayReset = document.getElementById('overlayReset');
-const resetBtn = document.getElementById('resetBtn');
+  // 1) 서버 URL (Cloud Run 배포 후 수정)
+  const WS_URL = "https://YOUR-CLOUD-RUN-URL.a.run.app"; // ← 여기를 실제 배포 URL로 바꾸세요
 
-const ROWS = 15, COLS = 15;
-const TILE = canvas.width / COLS;   // 420/15 = 28
-const HALF = TILE / 2;
+  // 2) 방 이름
+  const params = new URLSearchParams(location.search);
+  const room = params.get("room") || "room1";
+  document.getElementById('roomInfo').textContent = `방: ${room}`;
 
-const BASE_SPEED = 5;
-const SPEED_MULT = 0.3;
-const SPEED = BASE_SPEED * SPEED_MULT;       // px/frame (격자선 이동)
-const GHOST_SPEED = SPEED * 0.9;
-const POWER_SPEED_MULT = 2.0;                // ⭐ 별 먹었을 때 배속
-
-const DOT_RADIUS = 3;
-const PELLET_SCORE = 10;
-
-const COLLIDE_RADIUS = TILE * 0.6;
-const FREEZE_MS = 3000;
-
-/* 장애물 개수(내부 13x13에서 정확히 이만큼 배치, 제약 충족 칸만) */
-const WALL_COUNT = 28;  // 필요한 만큼 조정 가능
-
-/* ====== 상태 ====== */
-let maze = [];              // 1=벽, 0=길 (15x15)
-let pellets = new Set();    // "r,c"
-let score = 0;
-let startTime = null;
-let elapsed = 0;
-let isRunning = false;
-let gameOver = false;
-
-/* ⭐ 파워별(큰별) 상태 */
-let star = null;                 // {r,c, appearAt, expireAt}
-let nextStarSpawnAt = 0;         // ms (별이 사라지거나 먹힌 후 10초 뒤)
-let powerActiveUntil = 0;        // ms (무적+가속 5초)
-
-/* 포털 좌표(경계 중앙 4곳) */
-const PORTALS = {
-  LEFT:  { r: Math.floor(ROWS/2), c: 0 },
-  RIGHT: { r: Math.floor(ROWS/2), c: COLS-1 },
-  TOP:   { r: 0, c: Math.floor(COLS/2) },
-  BOTTOM:{ r: ROWS-1, c: Math.floor(COLS/2) }
-};
-
-const pacman = {
-  r: 1, c: 1,               // 셀 좌표
-  dir: {x:0, y:0},          // (-1/0/1)
-  want:{x:0, y:0},
-  frozenUntil: 0,
-  hurtTintUntil: 0,
-  radius: TILE*0.45,
-  _acc: 0
-};
-
-function cellCenterX(c){ return c*TILE + HALF; }
-function cellCenterY(r){ return r*TILE + HALF; }
-
-/* 👾 유령 */
-function makeGhost(r,c,color){
-  return { r, c, dir: [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}][Math.floor(Math.random()*4)], color, _acc:0 };
-}
-let ghosts = [];
-const MAX_GHOSTS = 6;
-
-/* ====== 유틸 & 제약 검사 ====== */
-function inBounds(r,c){ return r>=0 && r<ROWS && c>=0 && c<COLS; }
-function isWall(r,c){ return !inBounds(r,c) || maze[r][c]===1; }
-function nowMs(){ return performance.now(); }
-const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
-
-/* (wr,wc)에 벽을 세우면 인접 빈칸이 4면 막힌 '고립칸'이 생기는지 */
-function wouldMakeDeadCell(wr, wc){
-  for (const [dr,dc] of DIRS){
-    const r = wr + dr, c = wc + dc;
-    if (!inBounds(r,c) || maze[r][c]===1) continue;
-    let walls = 0;
-    for (const [d2r,d2c] of DIRS){
-      const nr = r + d2r, nc = c + d2c;
-      if ((nr===wr && nc===wc) || isWall(nr,nc)) walls++;
-    }
-    if (walls === 4) return true;
+  // 3) Canvas 준비 (Retina 스케일)
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  function fitCanvas() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const cssWidth = Math.min(window.innerWidth - 20, 1200);
+    const cssHeight = Math.min(window.innerHeight - 90, 700);
+    canvas.style.width = cssWidth + "px";
+    canvas.style.height = cssHeight + "px";
+    canvas.width = Math.floor(cssWidth * dpr);
+    canvas.height = Math.floor(cssHeight * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-  return false;
-}
+  window.addEventListener('resize', fitCanvas);
+  fitCanvas();
 
-/* 시작점(1,1)에서 모든 빈칸이 연결돼 있는지 */
-function isConnected(){
-  let totalEmpty = 0;
-  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) if (maze[r][c]===0) totalEmpty++;
+  // 4) 그리기 상태
+  const colorEl = document.getElementById('color');
+  const sizeEl  = document.getElementById('size');
+  const clearBtn = document.getElementById('clearBtn');
+  let drawing = false;
+  let last = null;
 
-  const sr = 1, sc = 1;
-  if (maze[sr][sc]===1) return false;
-
-  const q = [[sr,sc]];
-  const seen = Array.from({length:ROWS},()=>Array(COLS).fill(false));
-  seen[sr][sc]=true;
-  let visited = 1;
-
-  while (q.length){
-    const [r,c] = q.shift();
-    for (const [dr,dc] of DIRS){
-      const nr=r+dr, nc=c+dc;
-      if (!inBounds(nr,nc) || seen[nr][nc]) continue;
-      if (maze[nr][nc]===0){
-        seen[nr][nc]=true;
-        visited++;
-        q.push([nr,nc]);
-      }
-    }
-  }
-  return visited === totalEmpty;
-}
-
-/* 내부 13×13에 제약을 만족하는 벽을 WALL_COUNT개 배치 */
-function placeRandomWallsWithConstraints(){
-  const cand = [];
-  for (let r=1;r<ROWS-1;r++){
-    for (let c=1;c<COLS-1;c++){
-      if (r>=1 && r<=3 && c>=1 && c<=3) continue; // 시작구역 제외
-      cand.push([r,c]);
-    }
-  }
-  cand.sort(()=>Math.random()-0.5); // 셔플
-
-  let placed = 0;
-  for (let i=0; i<cand.length && placed<WALL_COUNT; i++){
-    const [r,c] = cand[i];
-    if (maze[r][c]===1) continue;
-    if (wouldMakeDeadCell(r,c)) continue;
-
-    // 임시로 세워서 연결성 확인
-    maze[r][c] = 1;
-    if (!isConnected()){
-      maze[r][c] = 0; // 되돌림
-      continue;
-    }
-    placed++;
-  }
-}
-
-/* ====== 맵 생성: 테두리=벽, 내부=길 → 제약 충족 벽 배치 + 포털 생성 ====== */
-function generateMaze(){
-  maze = Array.from({length:ROWS},()=>Array(COLS).fill(0));
-
-  // 테두리 벽
-  for (let r=0;r<ROWS;r++){ maze[r][0]=1; maze[r][COLS-1]=1; }
-  for (let c=0;c<COLS;c++){ maze[0][c]=1; maze[ROWS-1][c]=1; }
-
-  // 포털 구멍(경계 중앙 4개) 뚫기
-  maze[PORTALS.LEFT.r][PORTALS.LEFT.c] = 0;
-  maze[PORTALS.RIGHT.r][PORTALS.RIGHT.c] = 0;
-  maze[PORTALS.TOP.r][PORTALS.TOP.c] = 0;
-  maze[PORTALS.BOTTOM.r][PORTALS.BOTTOM.c] = 0;
-
-  // 시작 구역(1..3,1..3) 비우기
-  for (let r=1;r<=3;r++) for (let c=1;c<=3;c++) maze[r][c]=0;
-
-  // 내부 13×13에 벽 배치
-  placeRandomWallsWithConstraints();
-}
-
-/* 펠릿: 전체 15x15 내부 길 위 */
-function scatterPellets(){
-  pellets = new Set();
-  for (let r=1;r<ROWS-1;r++){
-    for (let c=1;c<COLS-1;c++){
-      if (maze[r][c]===0) pellets.add(`${r},${c}`);
-    }
-  }
-}
-
-function emptyCells(excludeStart=true){
-  const arr=[];
-  for (let r=1;r<ROWS-1;r++){
-    for (let c=1;c<COLS-1;c++){
-      if (maze[r][c]===0){
-        if (excludeStart && (r<=3 && c<=3)) continue;
-        arr.push({r,c});
-      }
-    }
-  }
-  return arr;
-}
-function addGhostRandom(color){
-  const cells = emptyCells(true);
-  if (!cells.length) return;
-  const {r,c} = cells[Math.floor(Math.random()*cells.length)];
-  ghosts.push(makeGhost(r,c,color));
-}
-function placeActors(){
-  pacman.r=1; pacman.c=1; pacman.dir={x:0,y:0}; pacman.want={x:0,y:0};
-  pacman.frozenUntil=0; pacman.hurtTintUntil=0; pacman._acc=0;
-
-  ghosts = [];
-  addGhostRandom('#ff4d4d');
-  addGhostRandom('#7ad1ff');
-}
-
-/* ====== 포털 워프 ====== */
-function portalWrap(actor){
-  // 좌우
-  if (actor.r === PORTALS.LEFT.r && actor.c === PORTALS.LEFT.c){
-    actor.c = COLS - 2; // 오른쪽 안쪽 칸으로 워프
-  } else if (actor.r === PORTALS.RIGHT.r && actor.c === PORTALS.RIGHT.c){
-    actor.c = 1;        // 왼쪽 안쪽 칸으로 워프
-  }
-  // 상하
-  else if (actor.c === PORTALS.TOP.c && actor.r === PORTALS.TOP.r){
-    actor.r = ROWS - 2; // 아래쪽 안쪽 칸으로 워프
-  } else if (actor.c === PORTALS.BOTTOM.c && actor.r === PORTALS.BOTTOM.r){
-    actor.r = 1;        // 위쪽 안쪽 칸으로 워프
-  }
-}
-
-/* ====== 이동 (격자 스냅) ====== */
-function canMove(r,c){ return inBounds(r,c) && maze[r][c]===0; }
-
-function tryTurnGrid(actor){
-  const w = actor===pacman ? pacman.want : actor.want;
-  if (!w || (w.x===0 && w.y===0)) return;
-  const nr = actor.r + w.y, nc = actor.c + w.x;
-  if (canMove(nr, nc)) actor.dir = {x:w.x, y:w.y};
-}
-
-function stepAlongGrid(actor, speed){
-  const dir = actor.dir;
-  if (dir.x===0 && dir.y===0) return;
-  const nr = actor.r + dir.y;
-  const nc = actor.c + dir.x;
-
-  if (canMove(nr, nc)){
-    actor._acc = (actor._acc||0) + speed;
-    if (actor._acc >= TILE){
-      actor._acc -= TILE;
-      actor.r = nr; actor.c = nc;
-      portalWrap(actor); // 포털 처리
-    }
-  } else {
-    actor.dir = {x:0,y:0};
-    actor._acc = 0;
-  }
-}
-
-/* 팩맨 이동 */
-function movePacman(){
-  if (nowMs() < pacman.frozenUntil) return;
-  if ((pacman.dir.x===0 && pacman.dir.y===0) || pacman._acc===0) tryTurnGrid(pacman);
-
-  const now = nowMs();
-  const boost = (now < powerActiveUntil) ? POWER_SPEED_MULT : 1;
-  stepAlongGrid(pacman, SPEED * boost);
-
-  const key = `${pacman.r},${pacman.c}`;
-  if (pellets.has(key)){ pellets.delete(key); score += PELLET_SCORE; }
-}
-
-/* 유령 이동 (플레이어 쪽 가끔 우선) */
-function dirsTowardPlayerFrom(r,c){
-  const cand = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-  return cand.sort((a,b)=>{
-    const da = Math.abs((c+a.x) - pacman.c) + Math.abs((r+a.y) - pacman.r);
-    const db = Math.abs((c+b.x) - pacman.c) + Math.abs((r+b.y) - pacman.r);
-    return da - db;
-  });
-}
-function randomDirs(){ return [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].sort(()=>Math.random()-0.5); }
-function moveGhost(g){
-  if (!g.dir || g._acc===0){
-    const pri = (Math.random()<0.12) ? dirsTowardPlayerFrom(g.r,g.c) : randomDirs();
-    let set=false;
-    for (const d of pri){
-      if (canMove(g.r + d.y, g.c + d.x)){ g.dir=d; set=true; break; }
-    }
-    if (!set) g.dir={x:0,y:0};
-  }
-  stepAlongGrid(g, GHOST_SPEED);
-}
-
-/* 충돌 */
-function hitGhost(){
-  for (const g of ghosts){
-    if (g.r===pacman.r && g.c===pacman.c) return true;
-  }
-  return false;
-}
-function applyFreezePenalty(){
-  pacman.frozenUntil = nowMs() + FREEZE_MS;
-  pacman.hurtTintUntil = nowMs() + 500;
-}
-
-/* ====== 별(파워업) 로직 ====== */
-function spawnStarFromPellets(){
-  if (pellets.size === 0) return false;
-  const idx = Math.floor(Math.random()*pellets.size);
-  let i=0, chosen=null;
-  for (const k of pellets){ if (i===idx){ chosen=k; break; } i++; }
-  if (!chosen) return false;
-  const [r,c] = chosen.split(',').map(Number);
-  pellets.delete(chosen); // 펠릿 -> 별로 변환
-  const now = nowMs();
-  star = { r, c, appearAt: now, expireAt: now + 15000 }; // 15초 후 사라짐
-  return true;
-}
-
-function trySpawnStar(now){
-  if (star) return;
-  if (now >= nextStarSpawnAt){
-    const ok = spawnStarFromPellets();
-    if (!ok){
-      // 펠릿이 없으면 다음 기회 연기
-      nextStarSpawnAt = now + 10000;
-    }
-  }
-}
-
-function maybeConsumeStar(){
-  if (!star) return;
-  if (pacman.r === star.r && pacman.c === star.c){
-    star = null;
-    powerActiveUntil = nowMs() + 8000; // 5초 유지
-    nextStarSpawnAt = nowMs() + 10000; // 10초 후 재등장
-  }
-}
-
-/* ====== 그리기 ====== */
-function drawMaze(){
-  for (let r=0;r<ROWS;r++){
-    for (let c=0;c<COLS;c++){
-      if (maze[r][c]===1){
-        ctx.fillStyle = '#113b8f';
-        ctx.fillRect(c*TILE, r*TILE, TILE, TILE);
-      }
-    }
-  }
-  // 펠릿
-  ctx.fillStyle = '#ffd54a';
-  pellets.forEach(k=>{
-    const [r,c] = k.split(',').map(Number);
-    const cx = c*TILE + HALF, cy = r*TILE + HALF;
+  function beginStroke(x,y) {
+    drawing = true;
+    last = {x,y};
     ctx.beginPath();
-    ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI*2);
-    ctx.fill();
+    ctx.moveTo(x,y);
+  }
+  function moveStroke(x,y,col,sz) {
+    if(!drawing) return;
+    ctx.strokeStyle = col; ctx.lineWidth = sz; ctx.lineCap = 'round'; ctx.lineJoin='round';
+    ctx.lineTo(x,y);
+    ctx.stroke();
+    last = {x,y};
+  }
+  function endStroke() { drawing = false; last = null; }
+
+  // 5) 입력 핸들러 (마우스 + 터치)
+  function posFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    if(e.touches && e.touches[0]) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    } else {
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+  }
+  canvas.addEventListener('mousedown', e=>{
+    const p = posFromEvent(e); beginStroke(p.x,p.y);
+    socket.emit('draw', {room, t:'b', x:p.x, y:p.y});
+  });
+  canvas.addEventListener('mousemove', e=>{
+    if(!drawing) return;
+    const p = posFromEvent(e);
+    moveStroke(p.x,p.y, colorEl.value, Number(sizeEl.value));
+    socket.emit('draw', {room, t:'m', x:p.x, y:p.y, c:colorEl.value, s:Number(sizeEl.value)});
+  });
+  window.addEventListener('mouseup', e=>{
+    if(drawing) {
+      endStroke();
+      socket.emit('draw', {room, t:'e'});
+    }
   });
 
-  // ⭐ 큰별
-  if (star){
-    drawStar(star.c*TILE + HALF, star.r*TILE + HALF, DOT_RADIUS*2.0, '#fff27a', '#ffd700');
-  }
-}
-
-function drawStar(cx, cy, radius, fill, stroke){
-  // 간단한 5각 별
-  const spikes = 5;
-  let rot = Math.PI / 2 * 3;
-  let x = cx, y = cy;
-  const step = Math.PI / spikes;
-
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - radius);
-  for (let i = 0; i < spikes; i++) {
-    x = cx + Math.cos(rot) * radius;
-    y = cy + Math.sin(rot) * radius;
-    ctx.lineTo(x, y);
-    rot += step;
-
-    x = cx + Math.cos(rot) * (radius * 0.5);
-    y = cy + Math.sin(rot) * (radius * 0.5);
-    ctx.lineTo(x, y);
-    rot += step;
-  }
-  ctx.lineTo(cx, cy - radius);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
-}
-
-function drawPacman(){
-  const frozen = nowMs() < pacman.frozenUntil;
-  const hurt = nowMs() < pacman.hurtTintUntil;
-  const cx = pacman.c*TILE + HALF, cy = pacman.r*TILE + HALF;
-
-
-
-  const isPower = nowMs() < powerActiveUntil;
-  ctx.fillStyle = isPower ? '#00ff00' : (hurt ? '#ff6b6b' : '#ffeb3b');
-
-
-  const mouthOpen = frozen ? 0.1 : 0.35;
-  const ang = Math.atan2(pacman.dir.y, pacman.dir.x) || 0;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, pacman.radius, ang + mouthOpen, ang - mouthOpen, false);
-  ctx.closePath();
-  ctx.fill();
-}
-function drawGhost(g){
-  const cx = g.c*TILE + HALF, cy = g.r*TILE + HALF, r = TILE*0.45;
-  ctx.fillStyle = g.color;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, 0);
-  ctx.lineTo(cx + r, cy + r);
-  const teeth = 4;
-  for (let i=teeth; i>=0; i--){
-    const px = cx - r + (2*r/teeth)*i;
-    const py = cy + r - ((i%2) ? r*0.25 : 0);
-    ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-}
-
-/* HUD */
-function updateHud(){
-  const t = isRunning && startTime ? ((performance.now() - startTime)/1000) : elapsed;
-  const leftPower = Math.max(0, powerActiveUntil - nowMs());
-  const powerTxt = leftPower > 0 ? ` | POWER: ${(leftPower/1000).toFixed(1)}s` : '';
-  hud.innerHTML = `SCORE: ${score}${powerTxt}<br/>TIME: ${t.toFixed(2)}s`;
-}
-
-/* 루프 */
-function gameStep(){
-  if (gameOver){ updateHud(); return; }
-
-  if (isRunning){
-    // 유령 점증
-    const sec = (performance.now() - startTime) / 1000;
-    const target = Math.min(MAX_GHOSTS, 2 + Math.floor(sec / 25));
-    while (ghosts.length < target){
-      const palette = ['#ff4d4d','#7ad1ff','#ff99ff','#ffd166','#66ffa3','#ffb26b'];
-      const color = palette[(ghosts.length-1)%palette.length];
-      addGhostRandom(color);
-    }
-
-    // ⭐ 별 스폰/만료 관리
-    const now = nowMs();
-    trySpawnStar(now);
-    if (star && now >= star.expireAt){
-      star = null;                 // 못 먹었을 때 15초 후 사라짐
-      nextStarSpawnAt = now + 10000; // 10초 뒤 다시 등장
-    }
-
-    movePacman();
-    maybeConsumeStar(); // 별 먹음 체크
-
-    ghosts.forEach(moveGhost);
-
-    // 충돌 - 파워 중에는 무적
-    if (hitGhost()){
-      if (nowMs() >= powerActiveUntil){
-        applyFreezePenalty();
-      }
-    }
-
-    elapsed = (performance.now() - startTime) / 1000;
-
-    if (pellets.size===0 && !star){ // 남은 펠릿/별 없으면 클리어
-      gameOver = true;
-      endTitle.textContent = '🎉 클리어!';
-      finalTime.textContent = `기록: ${elapsed.toFixed(2)}초`;
-      finalScore.textContent = `점수: ${score}`;
-      overlay.classList.add('show');
-    }
-  }
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  drawMaze();
-  if (!gameOver) drawPacman();
-  ghosts.forEach(drawGhost);
-  updateHud();
-
-  requestAnimationFrame(gameStep);
-}
-
-/* ====== 입력: 키보드 ====== */
-window.addEventListener('keydown', (e)=>{
-  let used=true;
-  if (e.key==='ArrowUp')    pacman.want = {x:0,y:-1};
-  else if (e.key==='ArrowDown') pacman.want = {x:0,y:1};
-  else if (e.key==='ArrowLeft') pacman.want = {x:-1,y:0};
-  else if (e.key==='ArrowRight')pacman.want = {x:1,y:0};
-  else used=false;
-
-  if (used){
-    if (!isRunning){ isRunning = true; if (!startTime) startTime = performance.now(); }
+  canvas.addEventListener('touchstart', e=>{
     e.preventDefault();
-  }
-});
+    const p = posFromEvent(e); beginStroke(p.x,p.y);
+    socket.emit('draw', {room, t:'b', x:p.x, y:p.y});
+  }, {passive:false});
+  canvas.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    const p = posFromEvent(e);
+    moveStroke(p.x,p.y, colorEl.value, Number(sizeEl.value));
+    socket.emit('draw', {room, t:'m', x:p.x, y:p.y, c:colorEl.value, s:Number(sizeEl.value)});
+  }, {passive:false});
+  canvas.addEventListener('touchend', e=>{
+    e.preventDefault();
+    if(drawing){ endStroke(); socket.emit('draw', {room, t:'e'}); }
+  });
 
-/* 🔴 키에서 손 떼면 즉시 멈춤 */
-window.addEventListener('keyup', (e)=>{
-  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
-    pacman.want = {x:0, y:0};
-    pacman.dir  = {x:0, y:0};
-    pacman._acc = 0;
-  }
-});
+  clearBtn.addEventListener('click', ()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    socket.emit('clear', {room});
+  });
 
-/* ====== 입력: 동적 조이스틱 ====== */
-const stage = document.getElementById('stage');
-const joy = document.getElementById('joystick');
-const joyBase = document.getElementById('joyBase');
-const joyKnob = document.getElementById('joyKnob');
-
-let joyActive=false;
-let joyCenter={x:0,y:0};
-/* ⬇ 50% 축소에 맞춰 반경도 60 → 30 */
-const MAX_RADIUS=30;
-
-function showJoystick(x,y){ joy.style.left=x+'px'; joy.style.top=y+'px'; joy.style.opacity=1; }
-function hideJoystick(){ joy.style.opacity=0; }
-
-function setKnob(dx,dy){
-  const len = Math.hypot(dx,dy);
-  const clamped = Math.min(len, MAX_RADIUS);
-  const nx = len>0 ? dx*(clamped/len) : 0;
-  const ny = len>0 ? dy*(clamped/len) : 0;
-  joyKnob.style.left = (joyCenter.x + nx) + 'px';
-  joyKnob.style.top  = (joyCenter.y + ny) + 'px';
-
-  if (len<10){ pacman.want={x:0,y:0}; return; }
-  pacman.want = (Math.abs(dx)>=Math.abs(dy)) ? {x:Math.sign(dx), y:0} : {x:0, y:Math.sign(dy)};
-  if (!isRunning){ isRunning=true; if (!startTime) startTime=performance.now(); }
-}
-
-function getPoint(e){ return (e.touches && e.touches[0]) ? {x:e.touches[0].clientX, y:e.touches[0].clientY} : {x:e.clientX, y:e.clientY}; }
-function onPointerDown(e){
-  e.preventDefault();
-  const p=getPoint(e);
-  joyActive=true; showJoystick(p.x,p.y);
-  joyCenter={x:0,y:0};
-  joyBase.style.left='0px'; joyBase.style.top='0px';
-  joyKnob.style.left='0px'; joyKnob.style.top='0px';
-  if (!isRunning){ isRunning=true; if (!startTime) startTime=performance.now(); }
-}
-function onPointerMove(e){
-  if (!joyActive) return;
-  e.preventDefault();
-  const rect = joy.getBoundingClientRect();
-  const p=getPoint(e);
-  setKnob(p.x - rect.left, p.y - rect.top);
-}
-function onPointerUp(e){
-  if (!joyActive) return;
-  e.preventDefault();
-  joyActive=false; hideJoystick();
-  pacman.want={x:0,y:0};
-  pacman.dir={x:0,y:0};   // 🔴 손 떼면 즉시 멈춤
-  pacman._acc=0;
-}
-
-stage.addEventListener('touchstart', onPointerDown, {passive:false});
-stage.addEventListener('touchmove',  onPointerMove,  {passive:false});
-stage.addEventListener('touchend',   onPointerUp,    {passive:false});
-stage.addEventListener('mousedown',  onPointerDown);
-window.addEventListener('mousemove', onPointerMove);
-window.addEventListener('mouseup',   onPointerUp);
-
-/* ====== 리셋 & 시작 ====== */
-function resetGame(){
-  score=0; startTime=null; elapsed=0; isRunning=false; gameOver=false;
-  overlay.classList.remove('show');
-  endTitle.textContent='🎉 클리어!';
-
-  generateMaze();
-  scatterPellets();
-  placeActors();
-
-  // ⭐ 별/파워 초기화
-  star = null;
-  powerActiveUntil = 0;
-  nextStarSpawnAt = nowMs() + 10000; // 시작 후 10초 뒤 첫 별
-
-  updateHud();
-}
-resetBtn.addEventListener('click', resetGame);
-overlayReset.addEventListener('click', resetGame);
-const homeBtn = document.getElementById('homeBtn');
-homeBtn.addEventListener('click', () => {
-  location.href = "index.html";
-});
-
-resetGame();
-requestAnimationFrame(gameStep);
+  // 6) 소켓 연결
+  const socket = io(WS_URL, {transports:['websocket'], withCredentials:false});
+  socket.on('connect', ()=>{
+    socket.emit('join', {room});
+  });
+  socket.on('room_full', ()=>{
+    alert('이 방은 이미 2명이 사용 중입니다. 다른 방 이름으로 접속해주세요. (예: ?room=room2)');
+  });
+  socket.on('peer_count', n=>{
+    document.getElementById('peerInfo').textContent = `접속 인원: ${n}`;
+  });
+  socket.on('draw', msg=>{
+    // 상대 이벤트 반영
+    if(msg.t==='b'){ beginStroke(msg.x, msg.y); }
+    else if(msg.t==='m'){ moveStroke(msg.x, msg.y, msg.c, msg.s); }
+    else if(msg.t==='e'){ endStroke(); }
+  });
+  socket.on('clear', ()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
 </script>
 </body>
 </html>
+
 
