@@ -36,17 +36,17 @@
 </div>
 
 <!-- Socket.IO client (CDN) -->
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-Qv4r7qjv0t0h9uLoa0TQbF7EAwl5aM4A2Kf1x3GfQb8ypkhV3C7aFj1JkZCj8QQY" crossorigin="anonymous"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
-  // 1) 서버 URL (Cloud Run 배포 후 수정)
-  const WS_URL = "http://34.169.81.154:8080"; // ← 여기를 실제 배포 URL로 바꾸세요
+  // 1) 서버 URL
+  const WS_URL = "http://34.169.81.154:8080"; // ← VM 외부 IP 확인 후 맞게 수정하세요
 
   // 2) 방 이름
   const params = new URLSearchParams(location.search);
   const room = params.get("room") || "room1";
   document.getElementById('roomInfo').textContent = `방: ${room}`;
 
-  // 3) Canvas 준비 (Retina 스케일)
+  // 3) Canvas 준비
   const canvas = document.getElementById('board');
   const ctx = canvas.getContext('2d');
   function fitCanvas() {
@@ -84,7 +84,7 @@
   }
   function endStroke() { drawing = false; last = null; }
 
-  // 5) 입력 핸들러 (마우스 + 터치)
+  // 5) 입력 핸들러
   function posFromEvent(e) {
     const rect = canvas.getBoundingClientRect();
     if(e.touches && e.touches[0]) {
@@ -132,8 +132,9 @@
   });
 
   // 6) 소켓 연결
-  const socket = io(WS_URL, {transports:['websocket'], withCredentials:false});
+  const socket = io(WS_URL, {transports:['websocket']});
   socket.on('connect', ()=>{
+    console.log("서버에 연결됨");
     socket.emit('join', {room});
   });
   socket.on('room_full', ()=>{
@@ -143,7 +144,6 @@
     document.getElementById('peerInfo').textContent = `접속 인원: ${n}`;
   });
   socket.on('draw', msg=>{
-    // 상대 이벤트 반영
     if(msg.t==='b'){ beginStroke(msg.x, msg.y); }
     else if(msg.t==='m'){ moveStroke(msg.x, msg.y, msg.c, msg.s); }
     else if(msg.t==='e'){ endStroke(); }
@@ -154,5 +154,3 @@
 </script>
 </body>
 </html>
-
-
