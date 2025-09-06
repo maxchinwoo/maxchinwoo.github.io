@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>암기력 게임</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #101725;
+      color: #e8f1ff;
+    }
+    #modeButtons {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    #modeButtons button {
+      padding: 8px 16px;
+      font-size: 0.9em;
+      border: none;
+      border-radius: 6px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    #modeButtons button.active {
+      background: #28a745;
+    }
+    #game {
+      display: grid;
+      justify-content: center;
+      align-content: center;
+      gap: 4px;
+      width: 90vmin;
+      height: 90vmin;
+      margin-top: 10px;
+    }
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f0f0;
+      font-size: 4vmin;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+      color: #000;
+      transform: scale(0.7);
+    }
+    .cell:active {
+      background: #ddd;
+    }
+    #status {
+      font-size: 1.3em;
+      margin-top: 8px;
+    }
+    #buttons {
+      margin-top: 15px;
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 0.9em;
+      border: none;
+      border-radius: 6px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h1>암기력 게임</h1>
+  
+  <div id="modeButtons">
+    <button id="numberMode">🔢 숫자</button>
+    <button id="koreanMode">ㄱ 한글</button>
+  </div>
+
+  <div id="status">게임 모드를 선택하세요!</div>
+  <div id="game"></div>
+  <div id="buttons">
+    <button id="startBtn">▶ 시작</button>
+    <button id="resetBtn">🔄 리셋</button>
+    <button id="homeBtn">🏠 홈</button>
+  </div>
+
+  <script>
+    const gameContainer = document.getElementById("game");
+    const statusDiv = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const homeBtn = document.getElementById("homeBtn");
+
+    const numberModeBtn = document.getElementById("numberMode");
+    const koreanModeBtn = document.getElementById("koreanMode");
+
+    let currentLevel = 1;
+    let sequence = [];
+    let userIndex = 0;
+    let isRevealing = false;
+    let currentMode = "number";
+
+    const koreanLetters = ["가","나","다","라","마","바","사","아","자","차","카","타","파","하","거","너"];
+
+    const levelSettings = {
+      1: { rows: 2, cols: 2, count: 4 },
+      2: { rows: 2, cols: 3, count: 6 },
+      3: { rows: 3, cols: 3, count: 9 },
+      4: { rows: 3, cols: 4, count: 12 },
+      5: { rows: 4, cols: 4, count: 16 },
+    };
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function prepareLevel(level) {
+      gameContainer.innerHTML = "";
+      userIndex = 0;
+      const { rows, cols, count } = levelSettings[level];
+      gameContainer.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+      gameContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      for (let i = 0; i < count; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = "!";
+        gameContainer.appendChild(cell);
+      }
+      statusDiv.textContent = `${level}단계: 시작 버튼을 누르세요`;
+    }
+
+    function startLevel(level) {
+      gameContainer.innerHTML = "";
+      userIndex = 0;
+      const { rows, cols, count } = levelSettings[level];
+      const time = count * 1000;
+
+      if (currentMode === "number") {
+        sequence = shuffle([...Array(count).keys()].map(n => n + 1));
+      } else if (currentMode === "korean") {
+        sequence = shuffle(koreanLetters.slice(0, count)); // 랜덤 배치
+      }
+
+      gameContainer.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+      gameContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      sequence.forEach((item, idx) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.style.fontSize = currentMode === "korean" ? "6vmin" : "4vmin";
+        cell.textContent = item;
+        cell.onclick = () => handleClick(item, idx, cell);
+        gameContainer.appendChild(cell);
+      });
+
+      statusDiv.textContent = `${level}단계: 외우세요! (${count}개, ${time/1000}초)`;
+      isRevealing = true;
+
+      setTimeout(() => {
+        document.querySelectorAll(".cell").forEach(cell => {
+          cell.textContent = "?";
+        });
+        statusDiv.textContent = `${level}단계: 순서대로 클릭하세요!`;
+        isRevealing = false;
+      }, time);
+    }
+
+    function handleClick(item, idx, cell) {
+      if (isRevealing) return;
+
+      if (currentMode === "number") {
+        if (item === userIndex + 1) {
+          cell.textContent = item;
+          cell.style.background = "#90ee90";
+          userIndex++;
+        } else {
+          fail();
+          return;
+        }
+      } else if (currentMode === "korean") {
+        if (item === koreanLetters[userIndex]) { // 정답은 고정 순서
+          cell.textContent = item;
+          cell.style.background = "#90ee90";
+          userIndex++;
+        } else {
+          fail();
+          return;
+        }
+      }
+
+      if (userIndex === (currentMode === "number" ? sequence.length : koreanLetters.slice(0, levelSettings[currentLevel].count).length)) {
+        if (currentLevel === 5) {
+          statusDiv.textContent = "🎉 게임 성공!";
+        } else {
+          statusDiv.textContent = `✅ ${currentLevel}단계 통과!`;
+          currentLevel++;
+          setTimeout(() => prepareLevel(currentLevel), 2000);
+        }
+      }
+    }
+
+    function fail() {
+      statusDiv.textContent = "❌ 틀렸습니다! 다시 도전하세요.";
+      setTimeout(() => prepareLevel(currentLevel), 2000);
+    }
+
+    function setActiveButton(activeBtn) {
+      [numberModeBtn, koreanModeBtn].forEach(btn => btn.classList.remove("active"));
+      activeBtn.classList.add("active");
+    }
+
+    numberModeBtn.onclick = () => { currentMode = "number"; currentLevel = 1; prepareLevel(currentLevel); setActiveButton(numberModeBtn); };
+    koreanModeBtn.onclick = () => { currentMode = "korean"; currentLevel = 1; prepareLevel(currentLevel); setActiveButton(koreanModeBtn); };
+
+    startBtn.onclick = () => { startLevel(currentLevel); };
+    resetBtn.onclick = () => { currentLevel = 1; prepareLevel(currentLevel); };
+    homeBtn.onclick = () => { location.href = "index.html"; };
+
+    statusDiv.textContent = "게임 모드를 선택하세요!";
+  </script>
+</body>
+</html>
+
+
+
+
