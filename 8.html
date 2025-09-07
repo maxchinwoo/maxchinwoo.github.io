@@ -1,0 +1,2077 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>영어 단어 학습 게임</title>
+  <style>
+    body {
+      background: #0b0f14;
+      color: #e8f1ff;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #question {
+      font-size: 2em;
+      margin: 20px 0;
+    }
+    #options {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      max-width: 400px;
+      margin: 20px auto;
+    }
+    button {
+      font-size: 1.2em;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #4ea1ff;
+      color: white;
+    }
+    button:hover {
+      background: #2c7dd9;
+    }
+    #message {
+      font-size: 1.5em;
+      margin: 20px 0;
+    }
+    #controls {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 영어 단어 학습 게임</h1>
+  <div id="stage">시작 전</div>
+  <div id="question">▶ 시작 버튼을 누르세요</div>
+  <div id="options"></div>
+  <div id="message"></div>
+
+  <div id="controls">
+    <button onclick="startGame()">▶ 시작</button>
+    <button onclick="resetGame()">🔄 리셋</button>
+    <button onclick="goHome()">🏠 홈</button>
+    <button id="nextStageBtn" style="display:none;" onclick="nextStage()">➡ 다음 단계</button>
+  </div>
+
+
+<script>
+  const words = [
+  {
+    "word": "accept",
+    "meaning": "받다"
+  },
+  {
+    "word": "add",
+    "meaning": "더하다"
+  },
+  {
+    "word": "admire",
+    "meaning": "감탄하다"
+  },
+  {
+    "word": "admit",
+    "meaning": "인정하다"
+  },
+  {
+    "word": "advise",
+    "meaning": "조언하다"
+  },
+  {
+    "word": "afford",
+    "meaning": "감당하다"
+  },
+  {
+    "word": "agree",
+    "meaning": "동의하다"
+  },
+  {
+    "word": "allow",
+    "meaning": "허락하다"
+  },
+  {
+    "word": "announce",
+    "meaning": "발표하다"
+  },
+  {
+    "word": "answer",
+    "meaning": "대답하다"
+  },
+  {
+    "word": "appear",
+    "meaning": "나타나다"
+  },
+  {
+    "word": "apply",
+    "meaning": "신청하다"
+  },
+  {
+    "word": "argue",
+    "meaning": "논쟁하다"
+  },
+  {
+    "word": "arrive",
+    "meaning": "도착하다"
+  },
+  {
+    "word": "ask",
+    "meaning": "묻다"
+  },
+  {
+    "word": "assist",
+    "meaning": "도와주다"
+  },
+  {
+    "word": "assume",
+    "meaning": "가정하다"
+  },
+  {
+    "word": "attend",
+    "meaning": "참석하다"
+  },
+  {
+    "word": "avoid",
+    "meaning": "피하다"
+  },
+  {
+    "word": "bake",
+    "meaning": "굽다"
+  },
+  {
+    "word": "balance",
+    "meaning": "균형잡다"
+  },
+  {
+    "word": "ban",
+    "meaning": "금지하다"
+  },
+  {
+    "word": "bathe",
+    "meaning": "목욕하다"
+  },
+  {
+    "word": "become",
+    "meaning": "되다"
+  },
+  {
+    "word": "begin",
+    "meaning": "시작하다"
+  },
+  {
+    "word": "believe",
+    "meaning": "믿다"
+  },
+  {
+    "word": "belong",
+    "meaning": "속하다"
+  },
+  {
+    "word": "bend",
+    "meaning": "구부리다"
+  },
+  {
+    "word": "bet",
+    "meaning": "내기하다"
+  },
+  {
+    "word": "bite",
+    "meaning": "물다"
+  },
+  {
+    "word": "blame",
+    "meaning": "비난하다"
+  },
+  {
+    "word": "bleed",
+    "meaning": "피흘리다"
+  },
+  {
+    "word": "blink",
+    "meaning": "깜박이다"
+  },
+  {
+    "word": "boil",
+    "meaning": "끓이다"
+  },
+  {
+    "word": "borrow",
+    "meaning": "빌리다"
+  },
+  {
+    "word": "bounce",
+    "meaning": "튀다"
+  },
+  {
+    "word": "bow",
+    "meaning": "절하다"
+  },
+  {
+    "word": "brake",
+    "meaning": "브레이크를 밟다"
+  },
+  {
+    "word": "break",
+    "meaning": "깨다"
+  },
+  {
+    "word": "breathe",
+    "meaning": "숨쉬다"
+  },
+  {
+    "word": "bring",
+    "meaning": "가져오다"
+  },
+  {
+    "word": "build",
+    "meaning": "짓다"
+  },
+  {
+    "word": "burn",
+    "meaning": "태우다"
+  },
+  {
+    "word": "buy",
+    "meaning": "사다"
+  },
+  {
+    "word": "calculate",
+    "meaning": "계산하다"
+  },
+  {
+    "word": "call",
+    "meaning": "부르다"
+  },
+  {
+    "word": "care",
+    "meaning": "돌보다"
+  },
+  {
+    "word": "carry",
+    "meaning": "나르다"
+  },
+  {
+    "word": "catch",
+    "meaning": "잡다"
+  },
+  {
+    "word": "cause",
+    "meaning": "야기하다"
+  },
+  {
+    "word": "change",
+    "meaning": "바꾸다"
+  },
+  {
+    "word": "charge",
+    "meaning": "청구하다"
+  },
+  {
+    "word": "check",
+    "meaning": "확인하다"
+  },
+  {
+    "word": "choose",
+    "meaning": "선택하다"
+  },
+  {
+    "word": "clean",
+    "meaning": "청소하다"
+  },
+  {
+    "word": "climb",
+    "meaning": "오르다"
+  },
+  {
+    "word": "close",
+    "meaning": "닫다"
+  },
+  {
+    "word": "collect",
+    "meaning": "모으다"
+  },
+  {
+    "word": "combine",
+    "meaning": "결합하다"
+  },
+  {
+    "word": "come",
+    "meaning": "오다"
+  },
+  {
+    "word": "compare",
+    "meaning": "비교하다"
+  },
+  {
+    "word": "complain",
+    "meaning": "불평하다"
+  },
+  {
+    "word": "complete",
+    "meaning": "완성하다"
+  },
+  {
+    "word": "confess",
+    "meaning": "고백하다"
+  },
+  {
+    "word": "confirm",
+    "meaning": "확인하다"
+  },
+  {
+    "word": "connect",
+    "meaning": "연결하다"
+  },
+  {
+    "word": "consider",
+    "meaning": "고려하다"
+  },
+  {
+    "word": "contain",
+    "meaning": "포함하다"
+  },
+  {
+    "word": "continue",
+    "meaning": "계속하다"
+  },
+  {
+    "word": "control",
+    "meaning": "통제하다"
+  },
+  {
+    "word": "cook",
+    "meaning": "요리하다"
+  },
+  {
+    "word": "copy",
+    "meaning": "복사하다"
+  },
+  {
+    "word": "correct",
+    "meaning": "고치다"
+  },
+  {
+    "word": "count",
+    "meaning": "세다"
+  },
+  {
+    "word": "cover",
+    "meaning": "덮다"
+  },
+  {
+    "word": "create",
+    "meaning": "창조하다"
+  },
+  {
+    "word": "cross",
+    "meaning": "건너다"
+  },
+  {
+    "word": "cry",
+    "meaning": "울다"
+  },
+  {
+    "word": "cut",
+    "meaning": "자르다"
+  },
+  {
+    "word": "dance",
+    "meaning": "춤추다"
+  },
+  {
+    "word": "deal",
+    "meaning": "거래하다"
+  },
+  {
+    "word": "decide",
+    "meaning": "결정하다"
+  },
+  {
+    "word": "deliver",
+    "meaning": "배달하다"
+  },
+  {
+    "word": "deny",
+    "meaning": "부인하다"
+  },
+  {
+    "word": "depend",
+    "meaning": "의존하다"
+  },
+  {
+    "word": "describe",
+    "meaning": "묘사하다"
+  },
+  {
+    "word": "design",
+    "meaning": "설계하다"
+  },
+  {
+    "word": "destroy",
+    "meaning": "파괴하다"
+  },
+  {
+    "word": "develop",
+    "meaning": "발전하다"
+  },
+  {
+    "word": "die",
+    "meaning": "죽다"
+  },
+  {
+    "word": "disagree",
+    "meaning": "반대하다"
+  },
+  {
+    "word": "discover",
+    "meaning": "발견하다"
+  },
+  {
+    "word": "discuss",
+    "meaning": "논의하다"
+  },
+  {
+    "word": "divide",
+    "meaning": "나누다"
+  },
+  {
+    "word": "do",
+    "meaning": "하다"
+  },
+  {
+    "word": "doubt",
+    "meaning": "의심하다"
+  },
+  {
+    "word": "draw",
+    "meaning": "그리다"
+  },
+  {
+    "word": "dream",
+    "meaning": "꿈꾸다"
+  },
+  {
+    "word": "drink",
+    "meaning": "마시다"
+  },
+  {
+    "word": "drive",
+    "meaning": "운전하다"
+  },
+  {
+    "word": "drop",
+    "meaning": "떨어뜨리다"
+  },
+  {
+    "word": "earn",
+    "meaning": "벌다"
+  },
+  {
+    "word": "eat",
+    "meaning": "먹다"
+  },
+  {
+    "word": "encourage",
+    "meaning": "격려하다"
+  },
+  {
+    "word": "enjoy",
+    "meaning": "즐기다"
+  },
+  {
+    "word": "enter",
+    "meaning": "들어가다"
+  },
+  {
+    "word": "escape",
+    "meaning": "탈출하다"
+  },
+  {
+    "word": "establish",
+    "meaning": "설립하다"
+  },
+  {
+    "word": "examine",
+    "meaning": "검사하다"
+  },
+  {
+    "word": "exist",
+    "meaning": "존재하다"
+  },
+  {
+    "word": "expect",
+    "meaning": "기대하다"
+  },
+  {
+    "word": "explain",
+    "meaning": "설명하다"
+  },
+  {
+    "word": "explore",
+    "meaning": "탐험하다"
+  },
+  {
+    "word": "express",
+    "meaning": "표현하다"
+  },
+  {
+    "word": "fail",
+    "meaning": "실패하다"
+  },
+  {
+    "word": "fall",
+    "meaning": "떨어지다"
+  },
+  {
+    "word": "feed",
+    "meaning": "먹이다"
+  },
+  {
+    "word": "feel",
+    "meaning": "느끼다"
+  },
+  {
+    "word": "fight",
+    "meaning": "싸우다"
+  },
+  {
+    "word": "fill",
+    "meaning": "채우다"
+  },
+  {
+    "word": "find",
+    "meaning": "찾다"
+  },
+  {
+    "word": "finish",
+    "meaning": "끝내다"
+  },
+  {
+    "word": "fit",
+    "meaning": "맞다"
+  },
+  {
+    "word": "fix",
+    "meaning": "고치다"
+  },
+  {
+    "word": "fly",
+    "meaning": "날다"
+  },
+  {
+    "word": "fold",
+    "meaning": "접다"
+  },
+  {
+    "word": "follow",
+    "meaning": "따라가다"
+  },
+  {
+    "word": "forbid",
+    "meaning": "금지하다"
+  },
+  {
+    "word": "forget",
+    "meaning": "잊다"
+  },
+  {
+    "word": "forgive",
+    "meaning": "용서하다"
+  },
+  {
+    "word": "freeze",
+    "meaning": "얼다"
+  },
+  {
+    "word": "frighten",
+    "meaning": "겁주다"
+  },
+  {
+    "word": "gain",
+    "meaning": "얻다"
+  },
+  {
+    "word": "gather",
+    "meaning": "모으다"
+  },
+  {
+    "word": "get",
+    "meaning": "얻다"
+  },
+  {
+    "word": "give",
+    "meaning": "주다"
+  },
+  {
+    "word": "go",
+    "meaning": "가다"
+  },
+  {
+    "word": "grow",
+    "meaning": "자라다"
+  },
+  {
+    "word": "guess",
+    "meaning": "추측하다"
+  },
+  {
+    "word": "handle",
+    "meaning": "다루다"
+  },
+  {
+    "word": "happen",
+    "meaning": "일어나다"
+  },
+  {
+    "word": "hate",
+    "meaning": "미워하다"
+  },
+  {
+    "word": "have",
+    "meaning": "가지다"
+  },
+  {
+    "word": "hear",
+    "meaning": "듣다"
+  },
+  {
+    "word": "help",
+    "meaning": "돕다"
+  },
+  {
+    "word": "hide",
+    "meaning": "숨기다"
+  },
+  {
+    "word": "hit",
+    "meaning": "때리다"
+  },
+  {
+    "word": "hold",
+    "meaning": "잡다"
+  },
+  {
+    "word": "hope",
+    "meaning": "희망하다"
+  },
+  {
+    "word": "hug",
+    "meaning": "포옹하다"
+  },
+  {
+    "word": "hunt",
+    "meaning": "사냥하다"
+  },
+  {
+    "word": "hurry",
+    "meaning": "서두르다"
+  },
+  {
+    "word": "hurt",
+    "meaning": "다치게 하다"
+  },
+  {
+    "word": "identify",
+    "meaning": "식별하다"
+  },
+  {
+    "word": "imagine",
+    "meaning": "상상하다"
+  },
+  {
+    "word": "improve",
+    "meaning": "개선하다"
+  },
+  {
+    "word": "include",
+    "meaning": "포함하다"
+  },
+  {
+    "word": "increase",
+    "meaning": "늘리다"
+  },
+  {
+    "word": "influence",
+    "meaning": "영향을 주다"
+  },
+  {
+    "word": "inform",
+    "meaning": "알리다"
+  },
+  {
+    "word": "invite",
+    "meaning": "초대하다"
+  },
+  {
+    "word": "join",
+    "meaning": "가입하다"
+  },
+  {
+    "word": "jump",
+    "meaning": "뛰다"
+  },
+  {
+    "word": "keep",
+    "meaning": "지키다"
+  },
+  {
+    "word": "kick",
+    "meaning": "차다"
+  },
+  {
+    "word": "kill",
+    "meaning": "죽이다"
+  },
+  {
+    "word": "kiss",
+    "meaning": "입맞추다"
+  },
+  {
+    "word": "knock",
+    "meaning": "두드리다"
+  },
+  {
+    "word": "know",
+    "meaning": "알다"
+  },
+  {
+    "word": "laugh",
+    "meaning": "웃다"
+  },
+  {
+    "word": "lead",
+    "meaning": "이끌다"
+  },
+  {
+    "word": "learn",
+    "meaning": "배우다"
+  },
+  {
+    "word": "leave",
+    "meaning": "떠나다"
+  },
+  {
+    "word": "lend",
+    "meaning": "빌려주다"
+  },
+  {
+    "word": "let",
+    "meaning": "허락하다"
+  },
+  {
+    "word": "lie",
+    "meaning": "눕다"
+  },
+  {
+    "word": "lift",
+    "meaning": "들다"
+  },
+  {
+    "word": "like",
+    "meaning": "좋아하다"
+  },
+  {
+    "word": "listen",
+    "meaning": "듣다"
+  },
+  {
+    "word": "live",
+    "meaning": "살다"
+  },
+  {
+    "word": "look",
+    "meaning": "보다"
+  },
+  {
+    "word": "lose",
+    "meaning": "잃다"
+  },
+  {
+    "word": "love",
+    "meaning": "사랑하다"
+  },
+  {
+    "word": "make",
+    "meaning": "만들다"
+  },
+  {
+    "word": "manage",
+    "meaning": "관리하다"
+  },
+  {
+    "word": "mark",
+    "meaning": "표시하다"
+  },
+  {
+    "word": "marry",
+    "meaning": "결혼하다"
+  },
+  {
+    "word": "mean",
+    "meaning": "의미하다"
+  },
+  {
+    "word": "measure",
+    "meaning": "측정하다"
+  },
+  {
+    "word": "meet",
+    "meaning": "만나다"
+  },
+  {
+    "word": "mention",
+    "meaning": "언급하다"
+  },
+  {
+    "word": "miss",
+    "meaning": "놓치다"
+  },
+  {
+    "word": "mix",
+    "meaning": "섞다"
+  },
+  {
+    "word": "move",
+    "meaning": "움직이다"
+  },
+  {
+    "word": "need",
+    "meaning": "필요하다"
+  },
+  {
+    "word": "notice",
+    "meaning": "알아차리다"
+  },
+  {
+    "word": "obey",
+    "meaning": "복종하다"
+  },
+  {
+    "word": "observe",
+    "meaning": "관찰하다"
+  },
+  {
+    "word": "obtain",
+    "meaning": "얻다"
+  },
+  {
+    "word": "offer",
+    "meaning": "제공하다"
+  },
+  {
+    "word": "open",
+    "meaning": "열다"
+  },
+  {
+    "word": "order",
+    "meaning": "주문하다"
+  },
+  {
+    "word": "own",
+    "meaning": "소유하다"
+  },
+  {
+    "word": "paint",
+    "meaning": "그리다"
+  },
+  {
+    "word": "participate",
+    "meaning": "참가하다"
+  },
+  {
+    "word": "pass",
+    "meaning": "통과하다"
+  },
+  {
+    "word": "pay",
+    "meaning": "지불하다"
+  },
+  {
+    "word": "perform",
+    "meaning": "수행하다"
+  },
+  {
+    "word": "permit",
+    "meaning": "허용하다"
+  },
+  {
+    "word": "persuade",
+    "meaning": "설득하다"
+  },
+  {
+    "word": "phone",
+    "meaning": "전화하다"
+  },
+  {
+    "word": "pick",
+    "meaning": "고르다"
+  },
+  {
+    "word": "plan",
+    "meaning": "계획하다"
+  },
+  {
+    "word": "play",
+    "meaning": "놀다"
+  },
+  {
+    "word": "point",
+    "meaning": "가리키다"
+  },
+  {
+    "word": "possess",
+    "meaning": "소유하다"
+  },
+  {
+    "word": "post",
+    "meaning": "게시하다"
+  },
+  {
+    "word": "pour",
+    "meaning": "붓다"
+  },
+  {
+    "word": "practice",
+    "meaning": "연습하다"
+  },
+  {
+    "word": "prefer",
+    "meaning": "선호하다"
+  },
+  {
+    "word": "prepare",
+    "meaning": "준비하다"
+  },
+  {
+    "word": "present",
+    "meaning": "제시하다"
+  },
+  {
+    "word": "press",
+    "meaning": "누르다"
+  },
+  {
+    "word": "pretend",
+    "meaning": "가장하다"
+  },
+  {
+    "word": "prevent",
+    "meaning": "막다"
+  },
+  {
+    "word": "produce",
+    "meaning": "생산하다"
+  },
+  {
+    "word": "promise",
+    "meaning": "약속하다"
+  },
+  {
+    "word": "protect",
+    "meaning": "보호하다"
+  },
+  {
+    "word": "prove",
+    "meaning": "증명하다"
+  },
+  {
+    "word": "provide",
+    "meaning": "제공하다"
+  },
+  {
+    "word": "publish",
+    "meaning": "출판하다"
+  },
+  {
+    "word": "pull",
+    "meaning": "당기다"
+  },
+  {
+    "word": "push",
+    "meaning": "밀다"
+  },
+  {
+    "word": "put",
+    "meaning": "놓다"
+  },
+  {
+    "word": "raise",
+    "meaning": "올리다"
+  },
+  {
+    "word": "reach",
+    "meaning": "도달하다"
+  },
+  {
+    "word": "read",
+    "meaning": "읽다"
+  },
+  {
+    "word": "realize",
+    "meaning": "깨닫다"
+  },
+  {
+    "word": "receive",
+    "meaning": "받다"
+  },
+  {
+    "word": "recognize",
+    "meaning": "인식하다"
+  },
+  {
+    "word": "record",
+    "meaning": "기록하다"
+  },
+  {
+    "word": "reduce",
+    "meaning": "줄이다"
+  },
+  {
+    "word": "reflect",
+    "meaning": "반사하다"
+  },
+  {
+    "word": "refuse",
+    "meaning": "거절하다"
+  },
+  {
+    "word": "regret",
+    "meaning": "후회하다"
+  },
+  {
+    "word": "relax",
+    "meaning": "휴식하다"
+  },
+  {
+    "word": "release",
+    "meaning": "풀어주다"
+  },
+  {
+    "word": "rely",
+    "meaning": "의지하다"
+  },
+  {
+    "word": "remain",
+    "meaning": "남다"
+  },
+  {
+    "word": "remember",
+    "meaning": "기억하다"
+  },
+  {
+    "word": "remind",
+    "meaning": "상기시키다"
+  },
+  {
+    "word": "remove",
+    "meaning": "제거하다"
+  },
+  {
+    "word": "repair",
+    "meaning": "수리하다"
+  },
+  {
+    "word": "repeat",
+    "meaning": "반복하다"
+  },
+  {
+    "word": "replace",
+    "meaning": "대체하다"
+  },
+  {
+    "word": "reply",
+    "meaning": "대답하다"
+  },
+  {
+    "word": "report",
+    "meaning": "보고하다"
+  },
+  {
+    "word": "represent",
+    "meaning": "대표하다"
+  },
+  {
+    "word": "request",
+    "meaning": "요청하다"
+  },
+  {
+    "word": "require",
+    "meaning": "요구하다"
+  },
+  {
+    "word": "rescue",
+    "meaning": "구조하다"
+  },
+  {
+    "word": "research",
+    "meaning": "연구하다"
+  },
+  {
+    "word": "respect",
+    "meaning": "존중하다"
+  },
+  {
+    "word": "rest",
+    "meaning": "쉬다"
+  },
+  {
+    "word": "result",
+    "meaning": "결과로 생기다"
+  },
+  {
+    "word": "return",
+    "meaning": "돌아가다"
+  },
+  {
+    "word": "reveal",
+    "meaning": "드러내다"
+  },
+  {
+    "word": "ride",
+    "meaning": "타다"
+  },
+  {
+    "word": "ring",
+    "meaning": "울리다"
+  },
+  {
+    "word": "rise",
+    "meaning": "오르다"
+  },
+  {
+    "word": "risk",
+    "meaning": "위험을 무릅쓰다"
+  },
+  {
+    "word": "rob",
+    "meaning": "훔치다"
+  },
+  {
+    "word": "roll",
+    "meaning": "구르다"
+  },
+  {
+    "word": "run",
+    "meaning": "달리다"
+  },
+  {
+    "word": "rush",
+    "meaning": "돌진하다"
+  },
+  {
+    "word": "sail",
+    "meaning": "항해하다"
+  },
+  {
+    "word": "save",
+    "meaning": "구하다"
+  },
+  {
+    "word": "say",
+    "meaning": "말하다"
+  },
+  {
+    "word": "see",
+    "meaning": "보다"
+  },
+  {
+    "word": "seek",
+    "meaning": "찾다"
+  },
+  {
+    "word": "seem",
+    "meaning": "처럼 보이다"
+  },
+  {
+    "word": "sell",
+    "meaning": "팔다"
+  },
+  {
+    "word": "send",
+    "meaning": "보내다"
+  },
+  {
+    "word": "serve",
+    "meaning": "봉사하다"
+  },
+  {
+    "word": "set",
+    "meaning": "놓다"
+  },
+  {
+    "word": "settle",
+    "meaning": "정착하다"
+  },
+  {
+    "word": "shake",
+    "meaning": "흔들다"
+  },
+  {
+    "word": "share",
+    "meaning": "공유하다"
+  },
+  {
+    "word": "shine",
+    "meaning": "빛나다"
+  },
+  {
+    "word": "shoot",
+    "meaning": "쏘다"
+  },
+  {
+    "word": "show",
+    "meaning": "보여주다"
+  },
+  {
+    "word": "shut",
+    "meaning": "닫다"
+  },
+  {
+    "word": "sing",
+    "meaning": "노래하다"
+  },
+  {
+    "word": "sit",
+    "meaning": "앉다"
+  },
+  {
+    "word": "sleep",
+    "meaning": "자다"
+  },
+  {
+    "word": "slide",
+    "meaning": "미끄러지다"
+  },
+  {
+    "word": "smell",
+    "meaning": "냄새 맡다"
+  },
+  {
+    "word": "smile",
+    "meaning": "미소짓다"
+  },
+  {
+    "word": "solve",
+    "meaning": "해결하다"
+  },
+  {
+    "word": "speak",
+    "meaning": "말하다"
+  },
+  {
+    "word": "spend",
+    "meaning": "쓰다"
+  },
+  {
+    "word": "stand",
+    "meaning": "서다"
+  },
+  {
+    "word": "start",
+    "meaning": "시작하다"
+  },
+  {
+    "word": "stay",
+    "meaning": "머물다"
+  },
+  {
+    "word": "steal",
+    "meaning": "훔치다"
+  },
+  {
+    "word": "stop",
+    "meaning": "멈추다"
+  },
+  {
+    "word": "study",
+    "meaning": "공부하다"
+  },
+  {
+    "word": "succeed",
+    "meaning": "성공하다"
+  },
+  {
+    "word": "suffer",
+    "meaning": "고통받다"
+  },
+  {
+    "word": "suggest",
+    "meaning": "제안하다"
+  },
+  {
+    "word": "support",
+    "meaning": "지지하다"
+  },
+  {
+    "word": "suppose",
+    "meaning": "가정하다"
+  },
+  {
+    "word": "survive",
+    "meaning": "생존하다"
+  },
+  {
+    "word": "swim",
+    "meaning": "수영하다"
+  },
+  {
+    "word": "take",
+    "meaning": "가지다"
+  },
+  {
+    "word": "talk",
+    "meaning": "이야기하다"
+  },
+  {
+    "word": "teach",
+    "meaning": "가르치다"
+  },
+  {
+    "word": "tear",
+    "meaning": "찢다"
+  },
+  {
+    "word": "tell",
+    "meaning": "말하다"
+  },
+  {
+    "word": "tend",
+    "meaning": "돌보다"
+  },
+  {
+    "word": "thank",
+    "meaning": "감사하다"
+  },
+  {
+    "word": "think",
+    "meaning": "생각하다"
+  },
+  {
+    "word": "throw",
+    "meaning": "던지다"
+  },
+  {
+    "word": "touch",
+    "meaning": "만지다"
+  },
+  {
+    "word": "train",
+    "meaning": "훈련하다"
+  },
+  {
+    "word": "travel",
+    "meaning": "여행하다"
+  },
+  {
+    "word": "treat",
+    "meaning": "대하다"
+  },
+  {
+    "word": "try",
+    "meaning": "시도하다"
+  },
+  {
+    "word": "turn",
+    "meaning": "돌리다"
+  },
+  {
+    "word": "understand",
+    "meaning": "이해하다"
+  },
+  {
+    "word": "use",
+    "meaning": "사용하다"
+  },
+  {
+    "word": "visit",
+    "meaning": "방문하다"
+  },
+  {
+    "word": "wait",
+    "meaning": "기다리다"
+  },
+  {
+    "word": "wake",
+    "meaning": "깨다"
+  },
+  {
+    "word": "walk",
+    "meaning": "걷다"
+  },
+  {
+    "word": "want",
+    "meaning": "원하다"
+  },
+  {
+    "word": "warn",
+    "meaning": "경고하다"
+  },
+  {
+    "word": "wash",
+    "meaning": "씻다"
+  },
+  {
+    "word": "watch",
+    "meaning": "지켜보다"
+  },
+  {
+    "word": "wear",
+    "meaning": "입다"
+  },
+  {
+    "word": "win",
+    "meaning": "이기다"
+  },
+  {
+    "word": "wish",
+    "meaning": "바라다"
+  },
+  {
+    "word": "wonder",
+    "meaning": "궁금해하다"
+  },
+  {
+    "word": "work",
+    "meaning": "일하다"
+  },
+  {
+    "word": "worry",
+    "meaning": "걱정하다"
+  },
+  {
+    "word": "write",
+    "meaning": "쓰다"
+  },
+  {
+    "word": "yell",
+    "meaning": "소리치다"
+  },
+  {
+    "word": "analyze",
+    "meaning": "분석하다"
+  },
+  {
+    "word": "arrange",
+    "meaning": "정리하다"
+  },
+  {
+    "word": "attach",
+    "meaning": "붙이다"
+  },
+  {
+    "word": "attract",
+    "meaning": "끌다"
+  },
+  {
+    "word": "bother",
+    "meaning": "귀찮게 하다"
+  },
+  {
+    "word": "celebrate",
+    "meaning": "축하하다"
+  },
+  {
+    "word": "chase",
+    "meaning": "쫓다"
+  },
+  {
+    "word": "cheer",
+    "meaning": "응원하다"
+  },
+  {
+    "word": "clarify",
+    "meaning": "명확히 하다"
+  },
+  {
+    "word": "command",
+    "meaning": "명령하다"
+  },
+  {
+    "word": "communicate",
+    "meaning": "의사소통하다"
+  },
+  {
+    "word": "compete",
+    "meaning": "경쟁하다"
+  },
+  {
+    "word": "compose",
+    "meaning": "구성하다"
+  },
+  {
+    "word": "concentrate",
+    "meaning": "집중하다"
+  },
+  {
+    "word": "conclude",
+    "meaning": "결론짓다"
+  },
+  {
+    "word": "confuse",
+    "meaning": "혼란시키다"
+  },
+  {
+    "word": "contribute",
+    "meaning": "기부하다"
+  },
+  {
+    "word": "convince",
+    "meaning": "확신시키다"
+  },
+  {
+    "word": "cooperate",
+    "meaning": "협력하다"
+  },
+  {
+    "word": "criticize",
+    "meaning": "비판하다"
+  },
+  {
+    "word": "damage",
+    "meaning": "손상시키다"
+  },
+  {
+    "word": "delay",
+    "meaning": "지연하다"
+  },
+  {
+    "word": "determine",
+    "meaning": "결정하다"
+  },
+  {
+    "word": "differ",
+    "meaning": "다르다"
+  },
+  {
+    "word": "direct",
+    "meaning": "지시하다"
+  },
+  {
+    "word": "disappear",
+    "meaning": "사라지다"
+  },
+  {
+    "word": "display",
+    "meaning": "전시하다"
+  },
+  {
+    "word": "drag",
+    "meaning": "끌다"
+  },
+  {
+    "word": "edit",
+    "meaning": "편집하다"
+  },
+  {
+    "word": "employ",
+    "meaning": "고용하다"
+  },
+  {
+    "word": "emphasize",
+    "meaning": "강조하다"
+  },
+  {
+    "word": "enable",
+    "meaning": "가능하게 하다"
+  },
+  {
+    "word": "encounter",
+    "meaning": "마주치다"
+  },
+  {
+    "word": "enforce",
+    "meaning": "집행하다"
+  },
+  {
+    "word": "entertain",
+    "meaning": "즐겁게 하다"
+  },
+  {
+    "word": "exclude",
+    "meaning": "제외하다"
+  },
+  {
+    "word": "expand",
+    "meaning": "확장하다"
+  },
+  {
+    "word": "expose",
+    "meaning": "드러내다"
+  },
+  {
+    "word": "extend",
+    "meaning": "확장하다"
+  },
+  {
+    "word": "face",
+    "meaning": "직면하다"
+  },
+  {
+    "word": "familiarize",
+    "meaning": "익숙하게 하다"
+  },
+  {
+    "word": "fasten",
+    "meaning": "묶다"
+  },
+  {
+    "word": "feature",
+    "meaning": "특징으로 하다"
+  },
+  {
+    "word": "form",
+    "meaning": "형성하다"
+  },
+  {
+    "word": "found",
+    "meaning": "설립하다"
+  },
+  {
+    "word": "generate",
+    "meaning": "생성하다"
+  },
+  {
+    "word": "govern",
+    "meaning": "통치하다"
+  },
+  {
+    "word": "guide",
+    "meaning": "안내하다"
+  },
+  {
+    "word": "highlight",
+    "meaning": "강조하다"
+  },
+  {
+    "word": "ignore",
+    "meaning": "무시하다"
+  },
+  {
+    "word": "illustrate",
+    "meaning": "설명하다"
+  },
+  {
+    "word": "impress",
+    "meaning": "감동시키다"
+  },
+  {
+    "word": "indicate",
+    "meaning": "나타내다"
+  },
+  {
+    "word": "inspire",
+    "meaning": "영감을 주다"
+  },
+  {
+    "word": "instruct",
+    "meaning": "지시하다"
+  },
+  {
+    "word": "interfere",
+    "meaning": "간섭하다"
+  },
+  {
+    "word": "introduce",
+    "meaning": "소개하다"
+  },
+  {
+    "word": "invest",
+    "meaning": "투자하다"
+  },
+  {
+    "word": "investigate",
+    "meaning": "조사하다"
+  },
+  {
+    "word": "involve",
+    "meaning": "포함하다"
+  },
+  {
+    "word": "isolate",
+    "meaning": "고립시키다"
+  },
+  {
+    "word": "judge",
+    "meaning": "판단하다"
+  },
+  {
+    "word": "justify",
+    "meaning": "정당화하다"
+  },
+  {
+    "word": "knit",
+    "meaning": "뜨개질하다"
+  },
+  {
+    "word": "label",
+    "meaning": "라벨을 붙이다"
+  },
+  {
+    "word": "last",
+    "meaning": "지속하다"
+  },
+  {
+    "word": "launch",
+    "meaning": "출시하다"
+  },
+  {
+    "word": "lay",
+    "meaning": "놓다"
+  },
+  {
+    "word": "lean",
+    "meaning": "기대다"
+  },
+  {
+    "word": "license",
+    "meaning": "허가하다"
+  },
+  {
+    "word": "limit",
+    "meaning": "제한하다"
+  },
+  {
+    "word": "link",
+    "meaning": "연결하다"
+  },
+  {
+    "word": "load",
+    "meaning": "싣다"
+  },
+  {
+    "word": "locate",
+    "meaning": "위치시키다"
+  },
+  {
+    "word": "maintain",
+    "meaning": "유지하다"
+  },
+  {
+    "word": "manufacture",
+    "meaning": "제조하다"
+  },
+  {
+    "word": "match",
+    "meaning": "맞추다"
+  },
+  {
+    "word": "matter",
+    "meaning": "중요하다"
+  },
+  {
+    "word": "motivate",
+    "meaning": "동기를 부여하다"
+  },
+  {
+    "word": "negotiate",
+    "meaning": "협상하다"
+  },
+  {
+    "word": "note",
+    "meaning": "주목하다"
+  },
+  {
+    "word": "oblige",
+    "meaning": "강요하다"
+  },
+  {
+    "word": "occupy",
+    "meaning": "차지하다"
+  },
+  {
+    "word": "offend",
+    "meaning": "화나게 하다"
+  },
+  {
+    "word": "operate",
+    "meaning": "작동하다"
+  },
+  {
+    "word": "organize",
+    "meaning": "조직하다"
+  },
+  {
+    "word": "overcome",
+    "meaning": "극복하다"
+  },
+  {
+    "word": "owe",
+    "meaning": "빚지다"
+  },
+  {
+    "word": "pack",
+    "meaning": "짐을 싸다"
+  },
+  {
+    "word": "pause",
+    "meaning": "잠시 멈추다"
+  },
+  {
+    "word": "perceive",
+    "meaning": "인지하다"
+  },
+  {
+    "word": "persist",
+    "meaning": "고집하다"
+  },
+  {
+    "word": "place",
+    "meaning": "놓다"
+  },
+  {
+    "word": "plant",
+    "meaning": "심다"
+  },
+  {
+    "word": "postpone",
+    "meaning": "연기하다"
+  },
+  {
+    "word": "predict",
+    "meaning": "예측하다"
+  },
+  {
+    "word": "proceed",
+    "meaning": "진행하다"
+  },
+  {
+    "word": "prohibit",
+    "meaning": "금지하다"
+  },
+  {
+    "word": "promote",
+    "meaning": "촉진하다"
+  },
+  {
+    "word": "propose",
+    "meaning": "제안하다"
+  },
+  {
+    "word": "purchase",
+    "meaning": "구매하다"
+  },
+  {
+    "word": "pursue",
+    "meaning": "추구하다"
+  },
+  {
+    "word": "question",
+    "meaning": "질문하다"
+  },
+  {
+    "word": "quit",
+    "meaning": "그만두다"
+  },
+  {
+    "word": "react",
+    "meaning": "반응하다"
+  },
+  {
+    "word": "rebuild",
+    "meaning": "재건하다"
+  },
+  {
+    "word": "recall",
+    "meaning": "회상하다"
+  },
+  {
+    "word": "recommend",
+    "meaning": "추천하다"
+  },
+  {
+    "word": "recover",
+    "meaning": "회복하다"
+  },
+  {
+    "word": "refer",
+    "meaning": "언급하다"
+  },
+  {
+    "word": "regard",
+    "meaning": "간주하다"
+  },
+  {
+    "word": "rent",
+    "meaning": "빌리다"
+  },
+  {
+    "word": "reserve",
+    "meaning": "예약하다"
+  },
+  {
+    "word": "resign",
+    "meaning": "사임하다"
+  },
+  {
+    "word": "resist",
+    "meaning": "저항하다"
+  },
+  {
+    "word": "resolve",
+    "meaning": "해결하다"
+  },
+  {
+    "word": "respond",
+    "meaning": "응답하다"
+  },
+  {
+    "word": "restore",
+    "meaning": "복원하다"
+  },
+  {
+    "word": "restrict",
+    "meaning": "제한하다"
+  },
+  {
+    "word": "retain",
+    "meaning": "보유하다"
+  },
+  {
+    "word": "retire",
+    "meaning": "은퇴하다"
+  },
+  {
+    "word": "review",
+    "meaning": "검토하다"
+  },
+  {
+    "word": "rule",
+    "meaning": "통치하다"
+  }
+];
+
+      let stage = 1;
+    let quizWords = [];
+    let remainingWords = [];
+    let answer = null;
+    let started = false;
+
+    // ✅ 음성 출력
+    function speak(text, lang) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // ✅ 게임 시작 버튼
+    function startGame() {
+      started = true;
+      stage = 1;
+      startStage();
+    }
+
+    // ✅ 단계 시작
+    function startStage() {
+      document.getElementById("stage").innerText = stage + " 단계";
+      document.getElementById("options").innerHTML = "";
+      document.getElementById("message").innerText = "";
+      document.getElementById("nextStageBtn").style.display = "none";
+
+      // 4개 단어 무작위 선택
+      quizWords = [];
+      while (quizWords.length < 4) {
+        const candidate = words[Math.floor(Math.random() * words.length)];
+        if (!quizWords.includes(candidate)) {
+          quizWords.push(candidate);
+        }
+      }
+      remainingWords = [...quizWords]; // 이번 단계에서 아직 맞추지 않은 단어들
+
+      // 단어 보여주기 (한글 → 영어)
+      let i = 0;
+      function showNextWord() {
+        if (i >= quizWords.length) {
+          setTimeout(showQuiz, 2000); // 마지막 단어 끝나고 퀴즈 시작
+          return;
+        }
+        const w = quizWords[i];
+        // 한글 먼저
+        document.getElementById("question").innerText = w.meaning;
+        speak(w.meaning, "ko-KR");
+        // 2초 후 영어 표시 & 읽기
+        setTimeout(() => {
+          document.getElementById("question").innerText = w.meaning + " - " + w.word;
+          speak(w.word, "en-US");
+        }, 2000);
+        // 4초 후 다음 단어
+        setTimeout(() => {
+          i++;
+          showNextWord();
+        }, 4000);
+      }
+      showNextWord();
+    }
+
+    // ✅ 퀴즈 표시
+    function showQuiz() {
+      if (remainingWords.length === 0) {
+        // 4개 다 맞추면 다음 단계로
+        speak(stage + "단계 통과하셨습니다", "ko-KR");
+        document.getElementById("message").innerText = "🎉 " + stage + "단계 통과!";
+        document.getElementById("nextStageBtn").style.display = "inline-block";
+        return;
+      }
+
+      // 이번에 맞출 문제: remainingWords 중 하나
+      answer = remainingWords[Math.floor(Math.random() * remainingWords.length)];
+      document.getElementById("question").innerText = "❓ " + answer.meaning;
+      speak(answer.meaning, "ko-KR");
+
+      // 보기: 영어 단어 4개
+      const optionsDiv = document.getElementById("options");
+      optionsDiv.innerHTML = "";
+      quizWords.forEach(w => {
+        const btn = document.createElement("button");
+        btn.innerText = w.word;
+        btn.onclick = () => checkAnswer(w);
+        optionsDiv.appendChild(btn);
+      });
+    }
+
+    // ✅ 정답 체크
+    function checkAnswer(choice) {
+      if (choice.word === answer.word) {
+        document.getElementById("message").innerText = "✅ 정답!";
+        // 맞춘 단어는 제거
+        remainingWords = remainingWords.filter(w => w.word !== answer.word);
+        setTimeout(showQuiz, 1000);
+      } else {
+        document.getElementById("message").innerText = "❌ 틀렸습니다. 다시 시도하세요.";
+        setTimeout(showQuiz, 1500);
+      }
+    }
+
+    // ✅ 다음 단계 버튼
+    function nextStage() {
+      stage++;
+      if (stage > 10) {
+        document.getElementById("question").innerText = "🎉 성공! 10단계 완료!";
+        document.getElementById("options").innerHTML = "";
+        document.getElementById("message").innerText = "";
+        document.getElementById("nextStageBtn").style.display = "none";
+      } else {
+        startStage();
+      }
+    }
+
+    // ✅ 리셋
+    function resetGame() {
+      stage = 1;
+      started = false;
+      document.getElementById("stage").innerText = "시작 전";
+      document.getElementById("question").innerText = "▶ 시작 버튼을 누르세요";
+      document.getElementById("options").innerHTML = "";
+      document.getElementById("message").innerText = "";
+      document.getElementById("nextStageBtn").style.display = "none";
+    }
+
+    // ✅ 홈으로
+    function goHome() {
+      window.location.href = "index.html";
+    }
+  </script>
+</body>
+</html>
