@@ -57,9 +57,7 @@
     <button onclick="goHome()">🏠 홈</button>
     <button id="nextStageBtn" style="display:none;" onclick="nextStage()">➡ 다음 단계</button>
   </div>
-
-
-<script>
+  <script>
   const words = [
   {
     "word": "accept",
@@ -1943,135 +1941,180 @@
   }
 ];
 
-      let stage = 1;
-    let quizWords = [];
-    let remainingWords = [];
-    let answer = null;
-    let started = false;
 
-    // ✅ 음성 출력
-    function speak(text, lang) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      window.speechSynthesis.speak(utterance);
+
+  let stage = 1;
+  let exampleWords = [];
+  let quizTargets = [];
+  let remainingTargets = [];
+  let currentAnswer = null;
+  let voices = [];
+
+  // ✅ 음성 엔진 로드
+  function loadVoices() {
+    voices = window.speechSynthesis.getVoices();
+  }
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+
+  // ✅ 보이스 선택
+  function setVoice(utterance, lang) {
+    if (!voices || voices.length === 0) return;
+    if (lang === "en-US") {
+      const eng = voices.find(v => v.lang === "en-US" && v.name.includes("Google")) 
+               || voices.find(v => v.lang === "en-US");
+      if (eng) utterance.voice = eng;
+    } else if (lang === "ko-KR") {
+      const kor = voices.find(v => v.lang === "ko-KR");
+      if (kor) utterance.voice = kor;
     }
+  }
 
-    // ✅ 게임 시작 버튼
-    function startGame() {
-      started = true;
-      stage = 1;
-      startStage();
-    }
+  // ✅ 기본 발음 (즉시 안내할 때)
+  function speak(text, lang) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 0.9;
+    setVoice(utterance, lang);
+    window.speechSynthesis.speak(utterance);
+  }
 
-    // ✅ 단계 시작
-    function startStage() {
-      document.getElementById("stage").innerText = stage + " 단계";
-      document.getElementById("options").innerHTML = "";
-      document.getElementById("message").innerText = "";
-      document.getElementById("nextStageBtn").style.display = "none";
+  // ✅ 발음 끝난 후 callback 실행
+  function speakAndThen(text, lang, callback) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 0.9;
+    setVoice(utterance, lang);
+    utterance.onend = () => {
+      if (callback) callback();
+    };
+    window.speechSynthesis.speak(utterance);
+  }
 
-      // 4개 단어 무작위 선택
-      quizWords = [];
-      while (quizWords.length < 4) {
-        const candidate = words[Math.floor(Math.random() * words.length)];
-        if (!quizWords.includes(candidate)) {
-          quizWords.push(candidate);
-        }
+  // ✅ 게임 시작
+  function startGame() {
+    stage = 1;
+    startStage();
+  }
+
+  // ✅ 단계 시작
+  function startStage() {
+    document.getElementById("stage").innerText = stage + " 단계";
+    document.getElementById("options").innerHTML = "";
+    document.getElementById("message").innerText = "";
+    document.getElementById("nextStageBtn").style.display = "none";
+
+    // 6개 단어 무작위 선택
+    exampleWords = [];
+    while (exampleWords.length < 6) {
+      const candidate = words[Math.floor(Math.random() * words.length)];
+      if (!exampleWords.includes(candidate)) {
+        exampleWords.push(candidate);
       }
-      remainingWords = [...quizWords]; // 이번 단계에서 아직 맞추지 않은 단어들
-
-      // 단어 보여주기 (한글 → 영어)
-      let i = 0;
-      function showNextWord() {
-        if (i >= quizWords.length) {
-          setTimeout(showQuiz, 2000); // 마지막 단어 끝나고 퀴즈 시작
-          return;
-        }
-        const w = quizWords[i];
-        // 한글 먼저
-        document.getElementById("question").innerText = w.meaning;
-        speak(w.meaning, "ko-KR");
-        // 2초 후 영어 표시 & 읽기
-        setTimeout(() => {
-          document.getElementById("question").innerText = w.meaning + " - " + w.word;
-          speak(w.word, "en-US");
-        }, 2000);
-        // 4초 후 다음 단어
-        setTimeout(() => {
-          i++;
-          showNextWord();
-        }, 4000);
-      }
-      showNextWord();
     }
 
-    // ✅ 퀴즈 표시
-    function showQuiz() {
-      if (remainingWords.length === 0) {
-        // 4개 다 맞추면 다음 단계로
-        speak(stage + "단계 통과하셨습니다", "ko-KR");
-        document.getElementById("message").innerText = "🎉 " + stage + "단계 통과!";
-        document.getElementById("nextStageBtn").style.display = "inline-block";
+    // 6개 단어 예시 보여주기
+    let i = 0;
+    function showNextWord() {
+      if (i >= exampleWords.length) {
+        setTimeout(showQuiz, 2000);
         return;
       }
-
-      // 이번에 맞출 문제: remainingWords 중 하나
-      answer = remainingWords[Math.floor(Math.random() * remainingWords.length)];
-      document.getElementById("question").innerText = "❓ " + answer.meaning;
-      speak(answer.meaning, "ko-KR");
-
-      // 보기: 영어 단어 4개
-      const optionsDiv = document.getElementById("options");
-      optionsDiv.innerHTML = "";
-      quizWords.forEach(w => {
-        const btn = document.createElement("button");
-        btn.innerText = w.word;
-        btn.onclick = () => checkAnswer(w);
-        optionsDiv.appendChild(btn);
-      });
+      const w = exampleWords[i];
+      document.getElementById("question").innerText = w.meaning;
+      speak(w.meaning, "ko-KR");
+      setTimeout(() => {
+        document.getElementById("question").innerText = w.meaning + " - " + w.word;
+        speak(w.word, "en-US");
+      }, 2000);
+      setTimeout(() => {
+        i++;
+        showNextWord();
+      }, 4000);
     }
+    showNextWord();
+  }
 
-    // ✅ 정답 체크
-    function checkAnswer(choice) {
-      if (choice.word === answer.word) {
-        document.getElementById("message").innerText = "✅ 정답!";
-        // 맞춘 단어는 제거
-        remainingWords = remainingWords.filter(w => w.word !== answer.word);
-        setTimeout(showQuiz, 1000);
-      } else {
-        document.getElementById("message").innerText = "❌ 틀렸습니다. 다시 시도하세요.";
-        setTimeout(showQuiz, 1500);
+  // ✅ 퀴즈 시작
+  function showQuiz() {
+    quizTargets = [];
+    while (quizTargets.length < 4) {
+      const candidate = exampleWords[Math.floor(Math.random() * exampleWords.length)];
+      if (!quizTargets.includes(candidate)) {
+        quizTargets.push(candidate);
       }
     }
+    remainingTargets = [...quizTargets];
+    askNextQuestion();
+  }
 
-    // ✅ 다음 단계 버튼
-    function nextStage() {
-      stage++;
-      if (stage > 10) {
-        document.getElementById("question").innerText = "🎉 성공! 10단계 완료!";
-        document.getElementById("options").innerHTML = "";
-        document.getElementById("message").innerText = "";
-        document.getElementById("nextStageBtn").style.display = "none";
-      } else {
-        startStage();
-      }
+  // ✅ 다음 문제 제시
+  function askNextQuestion() {
+    if (remainingTargets.length === 0) {
+      speak(stage + "단계 통과하셨습니다", "ko-KR");
+      document.getElementById("message").innerText = "🎉 " + stage + "단계 통과!";
+      document.getElementById("nextStageBtn").style.display = "inline-block";
+      return;
     }
 
-    // ✅ 리셋
-    function resetGame() {
-      stage = 1;
-      started = false;
-      document.getElementById("stage").innerText = "시작 전";
-      document.getElementById("question").innerText = "▶ 시작 버튼을 누르세요";
+    currentAnswer = remainingTargets[Math.floor(Math.random() * remainingTargets.length)];
+    document.getElementById("question").innerText = "❓ " + currentAnswer.meaning;
+    speak(currentAnswer.meaning, "ko-KR");
+
+    const optionsDiv = document.getElementById("options");
+    optionsDiv.innerHTML = "";
+    exampleWords.forEach(w => {
+      const btn = document.createElement("button");
+      btn.innerText = w.word;
+      btn.onclick = () => {
+        speakAndThen(w.word, "en-US", () => checkAnswer(w));
+      };
+      optionsDiv.appendChild(btn);
+    });
+  }
+
+  // ✅ 정답 체크
+  function checkAnswer(choice) {
+    if (choice.word === currentAnswer.word) {
+      document.getElementById("message").innerText = "✅ 정답!";
+      speak("맞았습니다", "ko-KR");
+      remainingTargets = remainingTargets.filter(w => w.word !== currentAnswer.word);
+      setTimeout(askNextQuestion, 1200);
+    } else {
+      document.getElementById("message").innerText = "❌ 틀렸습니다. 다시 시작!";
+      speak("틀렸습니다. 다시 시작합니다", "ko-KR");
+      setTimeout(startStage, 2000);
+    }
+  }
+
+  // ✅ 다음 단계
+  function nextStage() {
+    stage++;
+    if (stage > 10) {
+      document.getElementById("question").innerText = "🎉 성공! 10단계 완료!";
       document.getElementById("options").innerHTML = "";
       document.getElementById("message").innerText = "";
       document.getElementById("nextStageBtn").style.display = "none";
+    } else {
+      startStage();
     }
+  }
 
-    // ✅ 홈으로
-    function goHome() {
-      window.location.href = "index.html";
-    }
-  </script>
+  // ✅ 리셋
+  function resetGame() {
+    stage = 1;
+    document.getElementById("stage").innerText = "시작 전";
+    document.getElementById("question").innerText = "▶ 시작 버튼을 누르세요";
+    document.getElementById("options").innerHTML = "";
+    document.getElementById("message").innerText = "";
+    document.getElementById("nextStageBtn").style.display = "none";
+  }
+
+  // ✅ 홈
+  function goHome() {
+    window.location.href = "index.html";
+  }
+</script>
 </body>
 </html>
