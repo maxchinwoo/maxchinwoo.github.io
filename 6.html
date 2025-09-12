@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <title>포트리스 성벽 게임 (싱글/멀티)</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b0f14;
+      color: #e8f1ff;
+      font-family: sans-serif;
+    }
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      margin: 0 auto;
+      background: #101725;
+      border: 2px solid #4ea1ff;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    #ui {
+      text-align: center;
+      padding: 6px;
+      background: #121821;
+      font-size: 14px;
+    }
+    .badge{ background:#1a2233; padding:4px 8px; border-radius:999px; margin:0 4px; }
+    button{ padding:6px 12px; margin:0 4px; border:none; border-radius:8px; color:white; cursor:pointer; }
+    #singleBtn,#multiBtn,#resetBtn{ background:#1e90ff; }
+    button:hover{ opacity:0.8; }
+    #message { display:block; margin-top:6px; color:#ffb74e; font-weight:bold; }
+  </style>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="ui">
+    <span id="turnInfo" class="badge">턴: 대기중</span>
+    <span id="roleInfo" class="badge">역할: ?</span>
+    <span id="peerInfo" class="badge">접속: 0명</span>
+    <button id="singleBtn" onclick="startSingle()">싱글 모드</button>
+    <button id="multiBtn" onclick="startMulti()">멀티 모드</button>
+    <button id="resetBtn">게임 리셋</button>
+    <button onclick="toggleFullscreen()">전체 화면</button>
+    <span id="message"></span>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- 🎵 배경음악 & 효과음 -->
+  <audio id="bgm" src="g.mp3" loop></audio>
+  <audio id="shootSnd" src="shoot.mp3"></audio>
+  <audio id="explosionSnd" src="explosion.mp3"></audio>
+
+  <script>
+    const canvas=document.getElementById("gameCanvas");
+    const ctx=canvas.getContext("2d");
+
+    const GAME_WIDTH = 1280;
+    const GAME_HEIGHT = 720;
+
+    let lastScale=1, lastOffsetX=0, lastOffsetY=0;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // 🎵 사운드
+    const bgm=document.getElementById("bgm");
+    const shootSnd=document.getElementById("shootSnd");
+    const explosionSnd=document.getElementById("explosionSnd");
+    bgm.volume=0.4;
+    shootSnd.volume=0.75;
+    explosionSnd.volume=0.8;
+    function playBgm(){
+      bgm.play().catch(()=>console.log("모바일은 사용자 입력 후 재생됩니다."));
+    }
+    function playSnd(el){
+      el.currentTime=0;
+      el.play().catch(()=>{});
+    }
+
+    function resizeCanvas(){
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      let scale = Math.min(
+        canvas.width / GAME_WIDTH,
+        canvas.height / GAME_HEIGHT
+      );
+
+      let offsetX = (canvas.width - GAME_WIDTH * scale) / 2;
+      let offsetY = (canvas.height - GAME_HEIGHT * scale) / 2;
+
+      // ✅ 화면을 약간 위로
+      offsetY -= 100;  
+
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+
+      lastScale = scale;
+      lastOffsetX = offsetX;
+      lastOffsetY = offsetY;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // 좌표 변환
+    function toGameCoords(clientX, clientY){
+      const rect = canvas.getBoundingClientRect();
+      let x = (clientX - rect.left - lastOffsetX) / lastScale;
+      let y = (clientY - rect.top  - lastOffsetY) / lastScale;
+      if(isMobile) y -= 60/lastScale;
+      return {x, y};
+    }
+
+    // ------------------- 게임 로직 -------------------
+    let mode="";               
+    let socket=null;           
+    let myRole=null;           
+    let turn="p1";             
+    let projectile=null, gameOver=false;
+    let charging=false, chargeStart=0, aimVector={x:0,y:0};
+    let players={ p1:{x:0,y:0,boxes:[]}, p2:{x:0,y:0,boxes:[]} };
+    let explosions=[];
+    let particles=[]; // 🔥 꼬리/머즐 파티클
+    let barricade=null; // 🧱 중앙 바리케이드
+
+    const bgImage=new Image(); bgImage.src="sky.png";
+    const cannonImg=new Image(); cannonImg.src="cannon.png";
+    const bulletImg=new Image(); bulletImg.src="bullet.png";
+    const brickImg=new Image(); brickImg.src="brick.png";
+
+    function setActiveButton(m){
+      const singleBtn=document.getElementById("singleBtn");
+      const multiBtn=document.getElementById("multiBtn");
+      if(m==="single"){
+        singleBtn.style.background="#3bd16f";
+        multiBtn.style.background="#1e90ff";
+      } else {
+        singleBtn.style.background="#1e90ff";
+        multiBtn.style.background="#3bd16f";
+      }
+    }
+
+    // --- 성벽 모양(12블록) 템플릿 4종 ---
+    // 각 블록은 30x30, 중심 기준 상대 좌표
+    function shapeColumns(baseX, baseY){
+      // 기둥: 3열*4행
+      const res=[];
+      for(let c=0;c<3;c++){
+        for(let r=0;r<4;r++){
+          res.push({x:baseX + c*30, y:baseY - r*30, alive:true});
+        }
+      }
+      return res;
+    }
+    function shapeDome(baseX, baseY){
+      // 돔: 아래 4, 그 위 3, 그 위 3, 꼭대기 2 (총 12)
+      const res=[];
+      // row 0 (바닥) 4개
+      for(let i=0;i<4;i++) res.push({x:baseX + i*30, y:baseY, alive:true});
+      // row 1 3개 (중앙정렬)
+      for(let i=0;i<3;i++) res.push({x:baseX + 15 + i*30, y:baseY-30, alive:true});
+      // row 2 3개
+      for(let i=0;i<3;i++) res.push({x:baseX + 15 + i*30, y:baseY-60, alive:true});
+      // row 3 2개
+      for(let i=0;i<2;i++) res.push({x:baseX + 30 + i*30, y:baseY-90, alive:true});
+      return res;
+    }
+    function shapeHouse(baseX, baseY){
+      // 집: 바닥 4, 2층 4, 3층 3, 지붕 1 (총 12)
+      const res=[];
+      for(let i=0;i<4;i++) res.push({x:baseX + i*30, y:baseY, alive:true});
+      for(let i=0;i<4;i++) res.push({x:baseX + i*30, y:baseY-30, alive:true});
+      for(let i=0;i<3;i++) res.push({x:baseX + 15 + i*30, y:baseY-60, alive:true});
+      res.push({x:baseX + 45, y:baseY-90, alive:true});
+      return res;
+    }
+    function shapeCastle(baseX, baseY){
+      // 성: 양쪽 탑 + 크레네이션(총 12)
+      // 바닥: 5, 2층: 4, 3층: 모서리 2, 4층: 중앙 1  => 12
+      const res=[];
+      for(let i=0;i<5;i++) res.push({x:baseX + i*30, y:baseY, alive:true});
+      for(let i=0;i<4;i++) res.push({x:baseX + 15 + i*30, y:baseY-30, alive:true});
+      res.push({x:baseX, y:baseY-60, alive:true});
+      res.push({x:baseX + 120, y:baseY-60, alive:true});
+      res.push({x:baseX + 60, y:baseY-90, alive:true});
+      return res;
+    }
+
+    function pickShape(){
+      const r = Math.random();
+      if(r<0.25) return shapeColumns;
+      if(r<0.50) return shapeDome;
+      if(r<0.75) return shapeHouse;
+      return shapeCastle;
+    }
+
+    // --- 성벽 초기화 ---
+    function initBoxes(){
+      players.p1.boxes=[]; players.p2.boxes=[];
+      const brickW=30, brickH=30;
+
+      const p1BaseX = 230; // 살짝 안쪽
+      const p2BaseX = GAME_WIDTH - 230 - 4*brickW; // 최대폭 고려
+
+      // 4가지 모양 중 랜덤 선택(양쪽 독립)
+      const p1Shape = pickShape();
+      const p2Shape = pickShape();
+
+      // 바닥 기준 y
+      const baseY = GAME_HEIGHT-100;
+
+      players.p1.boxes = p1Shape(p1BaseX, baseY);
+      players.p2.boxes = p2Shape(p2BaseX, baseY);
+
+      players.p1.x = p1BaseX - 70;  
+      players.p1.y = baseY;
+      players.p2.x = p2BaseX + 70 + 4*brickW;  
+      players.p2.y = baseY;
+
+      // 🧱 중앙 바리케이드: 직선 사격 차단 높이
+      // 폭 50, 높이 220 (지면에서 220 올라옴)
+      const bw = 50;
+      const bh = 180;
+      barricade = {
+        x: (GAME_WIDTH - bw)/2,
+        y: GAME_HEIGHT - 50 - bh,
+        w: bw,
+        h: bh
+      };
+    }
+
+    function startGame(){
+      initBoxes();
+      projectile=null; charging=false; chargeStart=0; aimVector={x:0,y:0};
+      turn="p1"; gameOver=false; explosions=[]; particles=[];
+      document.getElementById("message").textContent="";
+      document.getElementById("turnInfo").textContent="턴: p1";
+      render();
+    }
+
+    document.getElementById("resetBtn").onclick=()=>{
+      if(mode==="multi" && socket){ socket.emit("reset"); }
+      startGame();
+    };
+
+    // --- 싱글 모드 ---
+    function startSingle(){
+      mode="single"; setActiveButton("single");
+      startGame();
+      playBgm();
+    }
+
+    // --- 멀티 모드 ---
+    function startMulti(){
+      mode="multi"; setActiveButton("multi");
+      startGame();
+      playBgm();
+
+      socket=io("http://34.169.81.154:3000");
+
+      socket.on("connect",()=>{ socket.emit("join",{room:"room1"}); });
+      socket.on("role",(role)=>{ 
+        myRole=role; 
+        document.getElementById("roleInfo").textContent=`역할: ${role}`;
+      });
+      socket.on("turn",(t)=>{ turn=t; document.getElementById("turnInfo").textContent=`턴: ${t}`; });
+      socket.on("peer_count",(n)=>{ 
+        document.getElementById("peerInfo").textContent=`접속: ${n}명`; 
+        if(n===2){ alert("게임 시작! 두 명이 접속했습니다."); startGame(); playBgm(); }
+      });
+      socket.on("shoot",(data)=>{ projectile=data; });
+      socket.on("hit",(data)=>{ explosions.push(data); playSnd(explosionSnd); });
+      socket.on("reset",()=>{ startGame(); });
+    }
+
+    // --- 파티클(머즐/트레일) ---
+    function spawnMuzzleFlash(x,y,dirX,dirY){
+      // 발사 순간 짧은 불꽃
+      for(let i=0;i<12;i++){
+        const sp = 3 + Math.random()*3;
+        const ang = Math.atan2(-dirY,-dirX) + (Math.random()-0.5)*0.6;
+        particles.push({
+          x, y,
+          vx: Math.cos(ang)*sp,
+          vy: Math.sin(ang)*sp,
+          life: 12 + Math.random()*6,
+          maxLife: 12 + Math.random()*6,
+          size: 2 + Math.random()*2,
+          type: 'muzzle'
+        });
+      }
+    }
+    function spawnTrail(x,y){
+      // 비행 중 꼬리 불꽃
+      for(let i=0;i<2;i++){
+        particles.push({
+          x: x + (Math.random()-0.5)*6,
+          y: y + (Math.random()-0.5)*6,
+          vx: (Math.random()-0.5)*0.5,
+          vy: (Math.random()-0.5)*0.5,
+          life: 20 + Math.random()*10,
+          maxLife: 20 + Math.random()*10,
+          size: 2 + Math.random()*2,
+          type: 'trail'
+        });
+      }
+    }
+    function updateParticles(){
+      for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i];
+        p.x+=p.vx; p.y+=p.vy;
+        p.life--;
+        // 살짝 위로 뜨는 느낌
+        if(p.type==='trail'){ p.vy -= 0.01; }
+        if(p.life<=0) particles.splice(i,1);
+      }
+    }
+    function drawParticles(){
+      particles.forEach(p=>{
+        const a = Math.max(0, p.life / p.maxLife);
+        if(p.type==='muzzle') ctx.fillStyle=`rgba(255,220,120,${a})`;
+        else ctx.fillStyle=`rgba(255,160,80,${a})`;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+        ctx.fill();
+      });
+    }
+
+    // --- 발사 ---
+    function shootProjectile(){
+      if(gameOver) return;
+      if(mode==="multi" && myRole!==turn) return;
+      const shooter=myRole||"p1";
+      const chargeTime=(Date.now()-chargeStart)/1000;
+      const power=Math.min(30,5+chargeTime*10);
+      const mag=Math.sqrt(aimVector.x**2+aimVector.y**2)||1;
+      const dirX=-aimVector.x/mag, dirY=-aimVector.y/mag;
+      const proj={x:players[shooter].x,y:players[shooter].y,vx:dirX*power,vy:dirY*power,owner:shooter};
+      projectile=proj;
+      spawnMuzzleFlash(proj.x, proj.y, dirX, dirY); // 🔥 머즐
+      playSnd(shootSnd); // 🔊 발사음
+      if(mode==="multi" && socket){ socket.emit("shoot",proj); }
+    }
+
+    // --- 입력 이벤트 ---
+    window.addEventListener("mousemove", e=>{
+      if(charging){
+        let pos = toGameCoords(e.clientX, e.clientY);
+        if(isMobile){
+          aimVector = {
+            x: (pos.x - players[myRole||"p1"].x) * 0.65,
+            y: (pos.y - players[myRole||"p1"].y) * 0.65
+          };
+        } else {
+          aimVector = {
+            x: pos.x - players[myRole||"p1"].x,
+            y: pos.y - players[myRole||"p1"].y
+          };
+        }
+      }
+    });
+
+    window.addEventListener("mousedown", e=>{
+      if(gameOver) return;
+      if(mode==="single" && turn!=="p1") return;
+      if(projectile) return;
+      charging=true; chargeStart=Date.now(); aimVector={x:0,y:0};
+    });
+
+    window.addEventListener("mouseup", e=>{ if(charging){charging=false; shootProjectile();}});
+
+    canvas.addEventListener("touchstart", e=>{
+      if(gameOver) return;
+      if(mode==="single" && turn!=="p1") return;
+      if(projectile) return;
+      charging=true; 
+      chargeStart=Date.now(); 
+      const t=e.touches[0];
+      let pos = toGameCoords(t.clientX, t.clientY);
+      aimVector = {
+        x: (pos.x - players[myRole||"p1"].x) * 0.65,
+        y: (pos.y - players[myRole||"p1"].y) * 0.65
+      };
+      e.preventDefault();
+    });
+
+    canvas.addEventListener("touchmove", e=>{
+      if(charging){ 
+        const t=e.touches[0];
+        let pos = toGameCoords(t.clientX, t.clientY);
+        aimVector = {
+          x: (pos.x - players[myRole||"p1"].x) * 0.65,
+          y: (pos.y - players[myRole||"p1"].y) * 0.65
+        };
+      }
+      e.preventDefault();
+    });
+
+    canvas.addEventListener("touchend", e=>{ if(charging){charging=false; shootProjectile();} e.preventDefault();});
+
+    // --- 전체 화면 ---
+    function toggleFullscreen(){
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isStandalone = window.navigator.standalone === true;
+      if(isIOS && !isStandalone){
+        alert("iOS Safari는 전체화면 API를 지원하지 않습니다.\n홈 화면에 추가 후 실행하면 전체화면으로 플레이할 수 있습니다.");
+        return;
+      }
+      if(!document.fullscreenElement){
+        canvas.requestFullscreen().catch(err=>console.log("Fullscreen error:",err));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // --- 충돌 및 유틸 ---
+    function pointInRect(px,py, rx,ry,rw,rh){
+      return (px>=rx && px<=rx+rw && py>=ry && py<=ry+rh);
+    }
+    function collideWithBarricade(x,y){
+      if(!barricade) return false;
+      return pointInRect(x,y, barricade.x, barricade.y, barricade.w, barricade.h);
+    }
+
+    // --- 그리기 ---
+    function render(){
+      if(bgImage.complete) ctx.drawImage(bgImage,0,0,GAME_WIDTH,GAME_HEIGHT);
+      else {ctx.fillStyle="#87CEEB"; ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);}
+
+      // 지면
+      ctx.fillStyle="#228B22"; ctx.fillRect(0,GAME_HEIGHT-50,GAME_WIDTH,50);
+
+      // 중앙 바리케이드
+      if(barricade){
+        ctx.fillStyle="#394a6d";
+        ctx.fillRect(barricade.x, barricade.y, barricade.w, barricade.h);
+        // 테두리
+        ctx.strokeStyle="#88a";
+        ctx.lineWidth=2;
+        ctx.strokeRect(barricade.x, barricade.y, barricade.w, barricade.h);
+      }
+
+      // 성벽 블록
+      Object.values(players).forEach(p=>{
+        p.boxes.forEach(b=>{
+          if(b.alive){
+            if(brickImg.complete) ctx.drawImage(brickImg,b.x-15,b.y-15,30,30);
+            else {ctx.fillStyle="gray"; ctx.fillRect(b.x-15,b.y-15,30,30);}
+          }
+        });
+      });
+
+      // 대포
+      if(cannonImg.complete){
+        ctx.drawImage(cannonImg,players.p1.x-45,players.p1.y-45,90,90);
+        ctx.save(); ctx.scale(-1,1);
+        ctx.drawImage(cannonImg,-(players.p2.x+45),players.p2.y-45,90,90);
+        ctx.restore();
+      }
+
+      // 조준/차지 바
+      if(charging){
+        const chargeTime=(Date.now()-chargeStart)/1000;
+        const power=Math.min(30,5+chargeTime*10);
+        ctx.strokeStyle="yellow"; ctx.beginPath();
+        ctx.moveTo(players[myRole||"p1"].x,players[myRole||"p1"].y);
+        ctx.lineTo(players[myRole||"p1"].x+aimVector.x,players[myRole||"p1"].y+aimVector.y);
+        ctx.stroke();
+        ctx.fillStyle="lime";
+        ctx.fillRect(players[myRole||"p1"].x-20,players[myRole||"p1"].y-60,Math.min(power*3,100),10);
+        ctx.strokeStyle="white";
+        ctx.strokeRect(players[myRole||"p1"].x-20,players[myRole||"p1"].y-60,100,10);
+      }
+
+      // 포탄
+      if(projectile && bulletImg.complete){
+        ctx.drawImage(bulletImg,projectile.x-8,projectile.y-8,16,16);
+      }
+
+      // 파티클
+      drawParticles();
+
+      // 폭발 이펙트
+      explosions.forEach((ex,i)=>{
+        ctx.beginPath();
+        ctx.arc(ex.x,ex.y,ex.radius,0,Math.PI*2);
+        ctx.fillStyle=`rgba(255,150,0,${1-ex.radius/ex.maxRadius})`;
+        ctx.fill();
+        ex.radius+=2;
+        if(ex.radius>ex.maxRadius) explosions.splice(i,1);
+      });
+    }
+
+    // --- 루프 & 물리 ---
+    function loop(){
+      // 포탄 이동
+      if(projectile){
+        const speedFactor=0.633;
+        projectile.vy+=0.3*speedFactor; // 중력
+        projectile.x+=projectile.vx*speedFactor;
+        projectile.y+=projectile.vy*speedFactor;
+
+        // 꼬리 파티클
+        spawnTrail(projectile.x, projectile.y);
+
+        let hit=false, hitPos=null;
+
+        // 대포 피격
+        Object.entries(players).forEach(([id,p])=>{
+          if(projectile && projectile.owner!==id){
+            const dx=projectile.x-p.x, dy=projectile.y-p.y;
+            if(Math.sqrt(dx*dx+dy*dy)<20){
+              explosions.push({x:p.x,y:p.y,radius:10,maxRadius:60});
+              hitPos={x:p.x,y:p.y};
+              document.getElementById("message").textContent=`${projectile.owner} 승리! (대포 명중)`;
+              gameOver=true; projectile=null; hit=true;
+            }
+          }
+        });
+
+        // 성벽 피격
+        if(projectile){
+          Object.entries(players).forEach(([id,p])=>{
+            if(projectile && projectile.owner!==id){
+              p.boxes.forEach(b=>{
+                if(b.alive && projectile.x>b.x-15&&projectile.x<b.x+15 &&
+                   projectile.y>b.y-15&&projectile.y<b.y+15){
+                  b.alive=false; hit=true; hitPos={x:b.x,y:b.y};
+                  explosions.push({x:b.x,y:b.y,radius:5,maxRadius:40});
+                }
+              });
+            }
+          });
+        }
+
+        // 바리케이드 충돌
+        if(projectile && collideWithBarricade(projectile.x, projectile.y)){
+          hit=true; hitPos={x:projectile.x,y:projectile.y};
+          explosions.push({x:projectile.x,y:projectile.y,radius:6,maxRadius:45});
+        }
+
+        if(hit){
+          projectile=null; 
+          playSnd(explosionSnd);
+          if(checkWin()) { /* 이미 메시지 처리됨 */ }
+          else endTurn();
+        }else if(projectile && projectile.y>=GAME_HEIGHT-50){
+          // 지면 충돌
+          explosions.push({x:projectile.x,y:GAME_HEIGHT-50,radius:6,maxRadius:45});
+          playSnd(explosionSnd);
+          projectile=null; 
+          endTurn();
+        }
+      }
+
+      updateParticles();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    function endTurn(){ 
+      if(gameOver) return;
+      if(mode==="single"){
+        if(turn==="p1"){ 
+          turn="p2"; 
+          setTimeout(()=>aiTurn(),800); 
+        } else turn="p1";
+        document.getElementById("turnInfo").textContent=`턴: ${turn}`;
+      }
+    }
+
+    function checkWin(){
+      if(players.p1.boxes.every(b=>!b.alive)){
+        document.getElementById("message").textContent="p2 승리! (성벽 파괴)";
+        gameOver=true; return true;
+      } else if(players.p2.boxes.every(b=>!b.alive)){
+        document.getElementById("message").textContent="p1 승리! (성벽 파괴)";
+        gameOver=true; return true;
+      }
+      return false;
+    }
+
+    // --- AI 조준(명중률 ~50%) ---
+    // 동일 물리로 그리드 탐색 + 시뮬레이션, 바리케이드/블록 충돌 고려
+    function aiTurn(){
+      if(gameOver||mode!=="single") return;
+
+      const shooter = players.p2;
+      // 우선 목표: p1의 살아있는 블록 중 가장 왼쪽/가까운 것
+      const targets = players.p1.boxes.filter(b=>b.alive);
+      let target = null;
+      if(targets.length>0){
+        // 가장 높은 블록(맞추기 쉬움)
+        target = targets.reduce((a,b)=> (a.y<b.y? a: b));
+      }else{
+        // 블록 없으면 대포
+        target = {x:players.p1.x, y:players.p1.y};
+      }
+
+      const best = aiFindShot(shooter.x, shooter.y, target.x, target.y);
+      // 50%는 의도적 오차를 넣어서 빗맞게
+      const willHit = Math.random()<0.5 && best.found;
+
+      let angle = best.angle || (25+Math.random()*10)*Math.PI/180;
+      let power = best.power || (20+Math.random()*8);
+
+      if(!willHit){
+        // 오차 부여(바리케이드 넘기긴 하되 목표에서 살짝 빗나가게)
+        angle += (Math.random()-0.5)*0.15; // 약 ±8.6도
+        power *= (0.92 + Math.random()*0.16); // ±8%
+      }
+
+      projectile={
+        x: shooter.x, y: shooter.y,
+        vx: Math.cos(Math.PI - angle)*power,
+        vy: -Math.sin(angle)*power,
+        owner: "p2"
+      };
+      spawnMuzzleFlash(shooter.x, shooter.y, -Math.cos(angle), -Math.sin(angle));
+      playSnd(shootSnd);
+    }
+
+    function aiFindShot(sx,sy, tx,ty){
+      const speedFactor=0.633;
+      const g = 0.3*speedFactor;
+      let best=null, bestDist=1e9, bestAng=null, bestPow=null;
+
+      // 각도 18°~75°, 파워 14~28 탐색
+      for(let aDeg=18; aDeg<=75; aDeg+=1){
+        const a = aDeg*Math.PI/180;
+        for(let p=14; p<=28; p+=1){
+          let x=sx, y=sy;
+          let vx=Math.cos(Math.PI - a)*p;
+          let vy=-Math.sin(a)*p;
+          let ok=true, minD=1e9;
+
+          for(let step=0; step<600; step++){
+            vy+=g;
+            x+=vx*speedFactor;
+            y+=vy*speedFactor;
+
+            // 바리케이드 충돌 시 실패
+            if(collideWithBarricade(x,y)){ ok=false; break; }
+            // 상대 블록에 닿으면 성공
+            for(const b of players.p1.boxes){
+              if(b.alive && x>b.x-15&&x<b.x+15 && y>b.y-15&&y<b.y+15){
+                // 정확히 히트
+                minD=0; ok=true; step=9999; break;
+              }
+            }
+            // 목표 근접도(대포도 고려)
+            const dx=x-tx, dy=y-ty;
+            const d=Math.sqrt(dx*dx+dy*dy);
+            if(d<minD) minD=d;
+
+            // 지면 닿으면 종료
+            if(y>=GAME_HEIGHT-50){ break; }
+            // 화면 밖 너무 멀어지면 그만
+            if(x<0||x>GAME_WIDTH||y<0||y>GAME_HEIGHT) { /* 계속 진행 허용 */ }
+          }
+          if(ok && minD<bestDist){
+            bestDist=minD; bestAng=a; bestPow=p;
+            best={found:true, angle:bestAng, power:bestPow, dist:bestDist};
+            if(minD===0) return best; // 완전 해결 시 조기 반환
+          }else if(best===null){
+            best={found:false};
+          }
+        }
+      }
+      return best||{found:false};
+    }
+
+    // --- 시작 ---
+    window.onload=()=>{ startSingle(); playBgm(); };
+    startGame(); loop();
+  </script>
+</body>
+</html>
+
