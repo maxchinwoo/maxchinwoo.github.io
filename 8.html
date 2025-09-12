@@ -1943,7 +1943,7 @@
 
 
 
-  let stage = 1;
+ let stage = 1;
   let exampleWords = [];
   let quizTargets = [];
   let remainingTargets = [];
@@ -1969,12 +1969,13 @@
     }
   }
 
-  // ✅ 기본 발음 (즉시 안내할 때)
+  // ✅ 기본 발음
   function speak(text, lang) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = 0.9;
+    // 📍 모바일/PC 속도 보정
+    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.2 : 0.9;
     setVoice(utterance, lang);
     window.speechSynthesis.speak(utterance);
   }
@@ -1984,7 +1985,8 @@
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = 0.9;
+    // 📍 모바일/PC 속도 보정
+    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.2 : 0.9;
     setVoice(utterance, lang);
     utterance.onend = () => {
       if (callback) callback();
