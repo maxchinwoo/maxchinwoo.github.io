@@ -1975,7 +1975,7 @@
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     // 📍 모바일/PC 속도 보정
-    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.2 : 0.9;
+    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.1 : 0.9;
     setVoice(utterance, lang);
     window.speechSynthesis.speak(utterance);
   }
@@ -1986,7 +1986,7 @@
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     // 📍 모바일/PC 속도 보정
-    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.2 : 0.9;
+    utterance.rate = /Mobi|Android/i.test(navigator.userAgent) ? 1.1 : 0.9;
     setVoice(utterance, lang);
     utterance.onend = () => {
       if (callback) callback();
