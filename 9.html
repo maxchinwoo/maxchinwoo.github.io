@@ -343,10 +343,16 @@
     }
 
     // 적 이동/충돌
-    for(let i=enemies.length-1;i>=0;i--){
-      const e = enemies[i];
-      e.y += e.vy * dt;
-      e.timer += dt;
+for(let i=enemies.length-1;i>=0;i--){
+  const e = enemies[i];  // ✅ 빠진 부분
+  const dx = player.x - e.x;
+  const dy = player.y - e.y;
+  const dist = Math.hypot(dx, dy) || 1;
+
+  const followSpeed = 80;
+  e.x += (dx/dist) * followSpeed * dt;
+  e.y += e.vy * dt;
+  e.timer += dt;
 
       // (옵션) 적 탄 발사 (간단히 드물게)
       if(e.shootable && e.timer>1.2 && Math.random()<0.015){
