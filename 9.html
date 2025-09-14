@@ -103,13 +103,11 @@
   <audio id="sndOver" src="over.mp3"></audio>
 
   <script>
-  // ====== 핀치줌 차단 (iOS Safari 등 보강) ======
+  // ====== 핀치줌 차단 ======
   document.addEventListener('gesturestart', e => e.preventDefault(), {passive:false});
   document.addEventListener('gesturechange', e => e.preventDefault(), {passive:false});
   document.addEventListener('gestureend', e => e.preventDefault(), {passive:false});
-  // Ctrl+휠 확대 방지
   window.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, {passive:false});
-  // 더블탭 확대 방지
   let _lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
     const now = Date.now();
@@ -156,15 +154,14 @@
   // ===== 스프라이트 =====
   const imgPlayer = new Image(); imgPlayer.src = "my.png";
   const imgEnemy  = new Image(); imgEnemy.src  = "target.png";
+  const imgEnemy2 = new Image(); imgEnemy2.src = "target2.png"; // ★ 추가된 적기
   const imgCoin   = new Image(); imgCoin.src   = "coin.png";
   const SPRITE_SCALE = 0.1;
 
-  // ===== 배경 (33.png 한 장, 무한타일) =====
+  // ===== 배경 =====
   const bg = new Image(); bg.src = "33.png";
   let bgY = 0;
-  // 기존 2px/프레임(≈120px/s)보다 5배 느리게 ≈ 24px/s
   const BG_SPEED = 24; // px/sec
-
   // ===== 게임 객체 =====
   const player = {
     x: VW*0.5, y: VH*0.8,
@@ -173,7 +170,7 @@
   };
 
   const bullets = [];      // {x,y,vy,r}
-  const enemies = [];      // {x,y,r,vy,hp,timer,shootable}
+  const enemies = [];      // {x,y,r,vy,hp,timer,shootable,type}
   const eBullets = [];     // {x,y,vy,r,vx?}
   const items = [];        // {x,y,r,vy}
 
@@ -181,15 +178,13 @@
   let lastItemSpawn = 0;
   let gameOver = false;
   let score = 0;
-  let startTime = now();   // const → let
+  let startTime = now();   
   let difficultyLevel = 1;
 
   // 보스
   let boss = null;
   const BOSS_HP = 30;
   const BOSS_SCALE = SPRITE_SCALE * 3;
-
-
 
   // ===== HP UI =====
   const hpEls = [1,2,3,4,5].map(i=>document.getElementById('hp'+i));
@@ -204,6 +199,7 @@
     }
   }
   syncHP();
+
   // ===== 조작 =====
   const joy = document.getElementById('joy'),
         joyKnob = document.getElementById('joyKnob'),
@@ -269,26 +265,35 @@
     bullets.push({x:player.x,y:player.y-24,vy:-620,r:5});
     playSafe(sndShoot);
   }
+
   function spawnEnemy(){
     const x=rand(40,VW-40), y=-30;
     const r=rand(14,22), vy=rand(80,150)*difficultyLevel;
-    enemies.push({x,y,r,vy,hp:1+(Math.random()<0.15?1:0),timer:0,shootable:Math.random()<0.2});
+
+    if(Math.random()<0.3){
+      // 새로운 적기 (target2.png)
+      enemies.push({type:"enemy2",x,y,r,vy:vy*1.1,hp:2,timer:0});
+    } else {
+      // 기존 적기
+      enemies.push({type:"enemy",x,y,r,vy,hp:1+(Math.random()<0.15?1:0),timer:0,shootable:Math.random()<0.2});
+    }
   }
+
   function spawnItem(){
     const x=rand(40,VW-40);
     items.push({x,y:-20,r:12,vy:120});
   }
+
   function hitCircle(a,b){
     const dx=a.x-b.x,dy=a.y-b.y;
     return(dx*dx+dy*dy)<=(a.r+b.r)*(a.r+b.r);
   }
-
   // ===== 업데이트 =====
   let last=now();
   function update(dt){
     if(gameOver) return;
     const elapsed=(now()-startTime)/1000;
-    difficultyLevel = 1+Math.floor(elapsed/30) * 0.7;
+    difficultyLevel = 1 + elapsed/60; // 부드럽게 난이도 증가
 
     // 보스 소환 (4분 후)
     if(elapsed>=240 && !boss){
@@ -317,50 +322,72 @@
     }
 
     // 적 스폰
-    if(now()-lastSpawn>2000/difficultyLevel){ lastSpawn=now(); spawnEnemy(); }
-    if(now()-lastItemSpawn>rand(8000,12000)){ lastItemSpawn=now(); spawnItem(); }
+    if(now()-lastSpawn>2000/difficultyLevel){ 
+      lastSpawn=now(); 
+      spawnEnemy(); 
+    }
+    if(now()-lastItemSpawn>rand(8000,12000)){ 
+      lastItemSpawn=now(); 
+      spawnItem(); 
+    }
 
     // 적 이동/충돌
     for(let i=enemies.length-1;i>=0;i--){
       const e=enemies[i];
-      const dx=player.x-e.x, dy=player.y-e.y, dist=Math.hypot(dx,dy)||1;
-      e.x+=(dx/dist)*80*dt; e.y+=e.vy*dt; e.timer+=dt;
 
-      if(e.shootable && e.timer>1.2 && Math.random()<0.015*difficultyLevel){
-        eBullets.push({x:e.x,y:e.y+10,vy:220,r:4});
-        e.timer=0;
+      if(e.type==="enemy2"){ 
+        // 새로운 적기: 사선으로 플레이어 추적
+        const dx=player.x-e.x, dy=player.y-e.y, dist=Math.hypot(dx,dy)||1;
+        e.x+=(dx/dist)*100*dt; 
+        e.y+=e.vy*dt; 
+      } else {
+        // 기존 적기
+        e.y+=e.vy*dt; 
+        e.timer+=dt;
+        if(e.shootable && e.timer>1.2 && Math.random()<0.015*difficultyLevel){
+          eBullets.push({x:e.x,y:e.y+10,vy:220,r:4});
+          e.timer=0;
+        }
       }
+
+      // 총알과 충돌
       for(let j=bullets.length-1;j>=0;j--){
         if(hitCircle(e,bullets[j])){
           bullets.splice(j,1); e.hp--;
           if(e.hp<=0){ enemies.splice(i,1); score+=100; }
-          playSafe(sndHit); break;
+          playSafe(sndHit); 
+          break;
         }
       }
       if(!gameOver && now()>player.invincibleUntil && hitCircle(e,player)){
-        enemies.splice(i,1); damagePlayer();
+        enemies.splice(i,1); 
+        damagePlayer();
       } else if(e.y>VH+40) enemies.splice(i,1);
     }
 
     // 보스 로직
     if(boss){
       boss.timer+=dt;
-      if(boss.timer>0.6){
+      if(boss.timer>0.8){
         const speed=200;
+        // 좌우 사선탄
         eBullets.push({x:boss.x,y:boss.y,vx:-speed*0.7,vy:speed*0.7,r:6});
         eBullets.push({x:boss.x,y:boss.y,vx:speed*0.7,vy:speed*0.7,r:6});
+        // 아래 직선탄 추가
+        eBullets.push({x:boss.x,y:boss.y,vx:0,vy:speed,r:6});
         boss.timer=0;
       }
       for(let j=bullets.length-1;j>=0;j--){
         if(hitCircle(boss,bullets[j])){
           bullets.splice(j,1); boss.hp--;
           if(boss.hp<=0){ boss=null; endGame(true); }
-          playSafe(sndHit); break;
+          playSafe(sndHit); 
+          break;
         }
       }
     }
 
-    // 적탄
+    // 적탄 이동
     for(let i=eBullets.length-1;i>=0;i--){
       const eb=eBullets[i];
       eb.x+=(eb.vx||0)*dt; eb.y+=eb.vy*dt;
@@ -370,7 +397,7 @@
       }
     }
 
-    // 아이템
+    // 아이템 이동
     for(let i=items.length-1;i>=0;i--){
       const it=items[i];
       it.y+=it.vy*dt;
@@ -382,12 +409,16 @@
       }
     }
   }
-
   function damagePlayer(){
-    player.hp--; syncHP();
+    player.hp--; 
+    syncHP();
     player.invincibleUntil=now()+900;
-    if(player.hp<=0){ player.hp=0; endGame(false); }
+    if(player.hp<=0){ 
+      player.hp=0; 
+      endGame(false); 
+    }
   }
+
   function endGame(victory){
     gameOver=true;
     document.getElementById('ovTitle').textContent = victory?'STAGE CLEAR!':'GAME OVER';
@@ -395,6 +426,7 @@
     document.getElementById('overlay').style.display='flex';
     playSafe(sndOver);
   }
+
   // ===== 배경 그리기 (33.png 반복) =====
   function drawBackground(dt){
     bgY += BG_SPEED * dt;
@@ -430,7 +462,11 @@
 
     // 적
     enemies.forEach(e=>{
-      if(imgEnemy.complete && imgEnemy.width>0){
+      if(e.type==="enemy2" && imgEnemy2.complete && imgEnemy2.width>0){
+        const w=imgEnemy2.width*SPRITE_SCALE, h=imgEnemy2.height*SPRITE_SCALE;
+        ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(Math.PI);
+        ctx.drawImage(imgEnemy2,-w/2,-h/2,w,h); ctx.restore();
+      } else if(e.type==="enemy" && imgEnemy.complete && imgEnemy.width>0){
         const w=imgEnemy.width*SPRITE_SCALE, h=imgEnemy.height*SPRITE_SCALE;
         ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(Math.PI);
         ctx.drawImage(imgEnemy,-w/2,-h/2,w,h); ctx.restore();
@@ -492,10 +528,8 @@
     score=0; gameOver=false; boss=null;
     document.getElementById('overlay').style.display='none';
     bgY=0;
-    startTime = now();     // 추가
-    difficultyLevel = 1;   // 추가
-
-
+    startTime = now();     
+    difficultyLevel = 1;   
   }
 
   document.getElementById('resetBtn').addEventListener('click',resetGame);
