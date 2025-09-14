@@ -21,8 +21,20 @@
   #topbar .btn{ padding:8px 12px; border:none; border-radius:10px; background:var(--pri); color:#fff; font-weight:700; cursor:pointer; }
   #topbar .spacer{ flex:1; }
   #stats{ display:flex; gap:10px; font-weight:700; }
-  #gameWrap{ position:fixed; inset:56px 0 90px 0; }           /* 아래 모바일 버튼 높이만큼 공간 */
-  #gameCanvas{ width:100vw; height:100%; display:block; background:var(--card); touch-action:none; }
+  #gameWrap{ position:fixed; inset:56px 0 90px 0; }
+  #gameCanvas{
+    width:100vw;
+    height:100%;
+    display:block;
+    background:var(--card);
+    touch-action:none;
+    -ms-touch-action:none;
+    -webkit-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-text-size-adjust:100%;
+  }
 
   /* 모바일 컨트롤러 */
   #mobileCtl{
@@ -37,7 +49,7 @@
   }
   .ctlBtn:active{ transform:translateY(1px); }
 
-  /* 오버레이(스테이지 클리어/게임오버) */
+  /* 오버레이 */
   #overlay{
     position:fixed; inset:56px 0 90px 0; display:none; align-items:center; justify-content:center;
     background:rgba(6,10,18,.6); z-index:30;
@@ -51,7 +63,7 @@
   #overlay .row{ display:flex; gap:10px; justify-content:center; }
   #overlay .row .btn{ padding:10px 14px; border:none; border-radius:10px; background:var(--pri); color:#fff; font-weight:700; cursor:pointer; }
 
-  /* 데스크탑일 때 모바일 컨트롤 살짝 축소 */
+  /* 데스크탑 */
   @media (pointer:fine){
     #mobileCtl{height:80px}
     .ctlBtn{min-width:70px; min-height:50px}
@@ -107,13 +119,13 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d',{ alpha:false });
 
-const LOGICAL_W = 360;         // 내부 논리 폭
-const LOGICAL_H = 640;         // 내부 논리 높이
+const LOGICAL_W = 360;
+const LOGICAL_H = 640;
 let scale=1, offX=0, offY=0;
 
 function fitCanvas(){
   const w = window.innerWidth;
-  const h = window.innerHeight - 56 - 90; // 상단바, 모바일버튼 높이 제외
+  const h = window.innerHeight - 56 - 90;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -134,7 +146,7 @@ fitCanvas();
 ========================= */
 const COLS = 10;
 const ROWS = 20;
-const CELL = Math.floor(Math.min(LOGICAL_W*0.8 / COLS, LOGICAL_H*0.95 / ROWS)); // 셀 크기
+const CELL = Math.floor(Math.min(LOGICAL_W*0.8 / COLS, LOGICAL_H*0.95 / ROWS));
 const BOARD_W = COLS * CELL;
 const BOARD_H = ROWS * CELL;
 const BOARD_X = Math.floor((LOGICAL_W - BOARD_W)/2);
@@ -152,10 +164,10 @@ const SHAPES = {
 const COLORS = {
   I:'#4dd2ff', O:'#ffd54f', T:'#ba77ff', S:'#66e49a', Z:'#ff8a80', J:'#64b5f6', L:'#ffb74d'
 };
-const BAG = () => shuffle(Object.keys(SHAPES).flatMap(k=>[k,k,k])); // 7피스 섞기(가볍게 3세트)
+const BAG = () => shuffle(Object.keys(SHAPES).flatMap(k=>[k,k,k]));
 
 /* =========================
-   스테이지(난이도 1~5)
+   스테이지
 ========================= */
 const STAGES = [
   { id:1, targetLines:10, gravityMs:800,  softDropMs:25 },
@@ -185,8 +197,6 @@ function syncHUD(){
 let board = createBoard(COLS, ROWS);
 let bag = BAG();
 let current = null;
-let nextQueue = [];
-let holdLock = false; // (확장 대비)
 let dropTimer = 0;
 let lastTime = performance.now();
 let running = true;
@@ -200,7 +210,6 @@ let stageCleared = 0;
 function createBoard(w,h){
   return Array.from({length:h},()=>Array(w).fill(null));
 }
-function clone2D(arr){ return arr.map(row=>row.slice()); }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 function rotate(mat){
   const h = mat.length, w = mat[0].length;
@@ -222,7 +231,7 @@ function spawnPiece(){
   const color = COLORS[type];
   const w = shape[0].length;
   const x = Math.floor((COLS - w)/2);
-  const y = -2; // 상단 위에서 시작
+  const y = -2;
   return { type, shape, color, x, y };
 }
 function canMove(piece, nx, ny, nshape=piece.shape){
@@ -231,7 +240,7 @@ function canMove(piece, nx, ny, nshape=piece.shape){
       if(!nshape[y][x]) continue;
       const bx = nx + x;
       const by = ny + y;
-      if(by < 0) continue; // 스폰 상단은 통과
+      if(by < 0) continue;
       if(bx<0 || bx>=COLS || by>=ROWS) return false;
       if(board[by][bx]) return false;
     }
@@ -244,10 +253,7 @@ function lockPiece(piece){
       if(!piece.shape[y][x]) continue;
       const bx = piece.x + x;
       const by = piece.y + y;
-      if(by<0){ // 스폰 즉시 막힘 = 게임오버
-        endGame(false);
-        return;
-      }
+      if(by<0){ endGame(false); return; }
       board[by][bx] = piece.color;
     }
   }
@@ -258,24 +264,21 @@ function clearLines(){
   let cleared=0;
   for(let y=ROWS-1;y>=0;y--){
     if(board[y].every(c=>!!c)){
-      // 라인 클리어
       board.splice(y,1);
       board.unshift(Array(COLS).fill(null));
       cleared++;
-      y++; // 같은 y 재검사
+      y++;
     }
   }
   if(cleared>0){
     const st = STAGES[stageIdx];
-    // 가벼운 점수 규칙
     const base = [0,100,300,500,800][cleared] || (cleared*250);
     score += base + stageIdx*25;
     totalCleared += cleared;
     stageCleared += cleared;
-    // 스테이지 목표 달성?
     if(stageCleared >= st.targetLines){
       if(st.id===5){
-        endGame(true); // 최종 클리어
+        endGame(true);
       }else{
         showOverlay(`Stage ${st.id} 클리어!`, `누적 점수: ${score.toLocaleString()}`);
         running=false;
@@ -299,7 +302,6 @@ window.addEventListener('keydown', (e)=>{
 });
 window.addEventListener('keyup', (e)=>{ keys[e.code]=false; });
 
-// 모바일 버튼(홀드 자동반복)
 function holdRepeat(el, onStep, interval=80){
   let t=null;
   const start = (e)=>{ e.preventDefault(); onStep(); t=setInterval(onStep, interval); };
@@ -326,19 +328,17 @@ function moveX(dx){
 }
 function softDrop(){
   if(!current) return;
-  const st = STAGES[stageIdx];
   if(canMove(current, current.x, current.y+1)){
     current.y += 1;
-    score += 1; // 소프트드랍 보너스
+    score += 1;
   }else{
     lockPiece(current);
   }
-  dropTimer = 0; // 드랍 타이머 리셋(자연낙하와 충돌 방지)
+  dropTimer = 0;
 }
 function rotateCW(){
   if(!current) return;
   const nshape = rotate(current.shape);
-  // 간단한 킥: 제자리→좌→우
   if(canMove(current, current.x, current.y, nshape)){ current.shape = nshape; return; }
   if(canMove(current, current.x-1, current.y, nshape)){ current.x-=1; current.shape=nshape; return; }
   if(canMove(current, current.x+1, current.y, nshape)){ current.x+=1; current.shape=nshape; return; }
@@ -379,13 +379,7 @@ function endGame(victory){
   running = false;
   const title = victory ? '🎉 ALL CLEAR!' : 'GAME OVER';
   showOverlay(title, `최종 점수: ${score.toLocaleString()} / 총 라인: ${totalCleared}`);
-
-  // ✅ 승리했을 때만 다음 단계 버튼 보이게
-  if (victory) {
-    document.getElementById('ovNext').style.display = 'none';   // 최종 클리어 → 다음 단계 없음
-  } else {
-    document.getElementById('ovNext').style.display = 'none';   // 실패 → 다음 단계 버튼 숨김
-  }
+  document.getElementById('ovNext').style.display = 'none';
 }
 
 function update(time){
@@ -393,12 +387,8 @@ function update(time){
   const dt = Math.min((time - lastTime), 1000);
   lastTime = time;
   dropTimer += dt;
-
   const st = STAGES[stageIdx];
-  const grav = st.gravityMs;
-
-  // 중력 낙하
-  if(dropTimer >= grav){
+  if(dropTimer >= st.gravityMs){
     if(canMove(current, current.x, current.y+1)){
       current.y += 1;
     }else{
@@ -409,19 +399,13 @@ function update(time){
 }
 
 function draw(){
-  // 배경
   ctx.fillStyle = '#0d1320';
   ctx.fillRect(0,0,LOGICAL_W,LOGICAL_H);
-
-  // 보드 테두리
   ctx.fillStyle = '#0a0f1a';
   ctx.fillRect(BOARD_X-8, BOARD_Y-8, BOARD_W+16, BOARD_H+16);
-
-  // 그리드 배경
   ctx.fillStyle = '#101725';
   ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
 
-  // 그리드 라인(연한)
   ctx.globalAlpha = 0.15;
   ctx.strokeStyle = '#a7bed3';
   ctx.lineWidth = 1;
@@ -439,28 +423,20 @@ function draw(){
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // 고정 블록
   for(let y=0;y<ROWS;y++){
     for(let x=0;x<COLS;x++){
       const color = board[y][x];
-      if(color){
-        drawCell(x,y,color);
-      }
+      if(color){ drawCell(x,y,color); }
     }
   }
-
-  // 현재 피스
   if(current){
     for(let y=0;y<current.shape.length;y++){
       for(let x=0;x<current.shape[0].length;x++){
-        if(current.shape[y][x]){
-          drawCell(current.x+x, current.y+y, current.color);
-        }
+        if(current.shape[y][x]){ drawCell(current.x+x, current.y+y, current.color); }
       }
     }
   }
 
-  // 우측 정보(간단)
   ctx.fillStyle = '#cfe6ff';
   ctx.font = '14px system-ui, sans-serif';
   ctx.fillText(`Score ${score}`, BOARD_X+BOARD_W+12, BOARD_Y+18);
@@ -474,7 +450,6 @@ function drawCell(cx, cy, color){
   const y = BOARD_Y + cy*CELL;
   ctx.fillStyle = color;
   ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
-  // 하이라이트/그림자
   ctx.globalAlpha = .25;
   ctx.fillStyle = '#fff';
   ctx.fillRect(x+2, y+2, CELL-4, 3);
@@ -504,10 +479,7 @@ function hideOverlay(){
 
 document.getElementById('resetBtn').addEventListener('click', ()=> resetStage(0));
 ovReset.addEventListener('click', ()=> resetStage(0));
-ovNext.addEventListener('click', ()=>{
-  hideOverlay();
-  nextStage();
-});
+ovNext.addEventListener('click', ()=>{ hideOverlay(); nextStage(); });
 
 /* =========================
    메인 루프
@@ -527,7 +499,6 @@ requestAnimationFrame(loop);
 /* =========================
    품질/안정 보조
 ========================= */
-// iOS 사파리 등에서 스크롤 방지(게임 영역)
 window.addEventListener('touchmove', (e)=>{
   const t = e.touches[0]; if(!t) return;
   const rect = canvas.getBoundingClientRect();
@@ -536,10 +507,17 @@ window.addEventListener('touchmove', (e)=>{
   }
 },{passive:false});
 
-// 브라우저 포커스 잃으면 일시정지(선택적)
-document.addEventListener('visibilitychange', ()=>{
-  paused = document.hidden;
-});
+document.addEventListener('visibilitychange', ()=>{ paused = document.hidden; });
+
+// ✅ 더블탭 확대 방지
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function(e) {
+  const now = new Date().getTime();
+  if (now - lastTouchEnd <= 300) {
+    e.preventDefault();
+  }
+  lastTouchEnd = now;
+}, { passive: false });
 </script>
 </body>
 </html>
