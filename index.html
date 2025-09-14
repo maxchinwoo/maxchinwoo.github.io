@@ -9,25 +9,30 @@
       height: 100vh;
       display: flex;
       justify-content: center;
-      align-items: center;
+      align-items: stretch;
       background: #121212;
       font-family: Arial, sans-serif;
     }
     .container {
       display: flex;
       flex-direction: column;
-      gap: 30px; /* 버튼 사이 간격도 조금 늘림 */
-      align-items: center;
+      justify-content: space-evenly; /* 버튼 10개를 세로로 균등 배치 */
+      height: 100%;
+      width: 100%;
+      max-width: 600px;              /* 가운데 정렬 느낌 */
+      margin: auto;
+      padding: 10px;
+      box-sizing: border-box;
     }
     button {
-      padding: 36px 72px;       /* ⬅ 패딩을 3배로 */
-      font-size: 3.6rem;        /* ⬅ 글자 크기 3배 */
+      flex: 1;                       /* 각 버튼이 같은 비율로 높이 차지 */
+      margin: 4px 0;                 /* 버튼 사이 간격 */
+      font-size: 1.5rem;
       border: none;
-      border-radius: 16px;      /* ⬅ 모서리도 조금 더 둥글게 */
+      border-radius: 12px;
       background: #1e90ff;
       color: white;
       cursor: pointer;
-      width: 600px;             /* ⬅ 가로 크기도 3배 */
       transition: 0.2s;
     }
     button:hover {
