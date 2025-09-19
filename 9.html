@@ -296,7 +296,7 @@
     difficultyLevel = 1 + elapsed/60; // 부드럽게 난이도 증가
 
     // 보스 소환 (4분 후)
-    if(elapsed>=240 && !boss){
+    if(elapsed>=150 && !boss){
       boss={x:VW/2,y:150,r:60,hp:BOSS_HP,timer:0};
     }
 
