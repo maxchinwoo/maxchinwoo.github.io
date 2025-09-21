@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>영어 단어 학습 게임 (음성)</title>
+  <style>
+    body {
+      background: #0b0f14;
+      color: #e8f1ff;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #question { font-size: 2em; margin: 20px 0; }
+    button {
+      font-size: 1.2em; padding: 10px 20px;
+      border: none; border-radius: 8px;
+      cursor: pointer; background: #4ea1ff; color: white;
+      margin: 5px;
+    }
+    button:hover { background: #2c7dd9; }
+    #message { font-size: 1.5em; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <h1>🎮 영어 단어 학습 게임 (음성)</h1>
+  <div id="stage">시작 전</div>
+  <div id="question">▶ 시작 버튼을 누르세요</div>
+  <div id="message"></div>
+
+  <div id="controls">
+    <button onclick="startGame()">▶ 시작</button>
+    <button onclick="resetGame()">🔄 리셋</button>
+    <button onclick="goHome()">🏠 홈</button>
+    <button id="recordBtn" style="display:none;">🎤 말하기</button>
+  </div>
+
+  <script>
+  // 문제 단어 (영어 → 한국어)
+  const words = [
+    { word:"accept", meaning:"받다" },
+    { word:"add", meaning:"더하다" },
+    { word:"admire", meaning:"감탄하다" },
+    { word:"admit", meaning:"인정하다" },
+    { word:"advise", meaning:"조언하다" },
+    { word:"agree", meaning:"동의하다" }
+  ];
+
+  let currentAnswer = null;
+  let stage = 1;
+
+  // 게임 시작
+  function startGame() {
+    document.getElementById("stage").innerText = stage + " 단계";
+    document.getElementById("message").innerText = "";
+
+    currentAnswer = words[Math.floor(Math.random()*words.length)];
+    document.getElementById("question").innerText = "❓ " + currentAnswer.meaning;
+
+    // 한국어로 문제 읽어주기
+    speak(currentAnswer.meaning, "ko-KR");
+
+    // 말하기 버튼 보이기
+    document.getElementById("recordBtn").style.display = "inline-block";
+  }
+
+  // 리셋
+  function resetGame(){
+    stage = 1;
+    document.getElementById("stage").innerText="시작 전";
+    document.getElementById("question").innerText="▶ 시작 버튼을 누르세요";
+    document.getElementById("message").innerText="";
+    document.getElementById("recordBtn").style.display="none";
+  }
+
+  // 홈 이동
+  function goHome(){ window.location.href="index.html"; }
+
+  // ✅ TTS (문제 읽기)
+  function speak(text, lang) {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    window.speechSynthesis.speak(u);
+  }
+
+  // 🎤 음성 인식 (서버 없이 실행)
+  const recordBtn = document.getElementById("recordBtn");
+  let recognition;
+
+  if ("webkitSpeechRecognition" in window) {
+    recognition = new webkitSpeechRecognition();
+    recognition.lang = "en-US";     // 영어 인식
+    recognition.continuous = false; // 한 번에 한 문장
+    recognition.interimResults = false;
+
+    recordBtn.onclick = () => {
+      recognition.start();
+      document.getElementById("message").innerText = "🎤 듣는 중...";
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      checkAnswer(transcript);
+    };
+
+    recognition.onerror = (e) => {
+      document.getElementById("message").innerText = "❌ 인식 오류";
+      console.error("음성인식 오류:", e.error);
+    };
+
+  } else {
+    // 지원 안 되는 브라우저
+    recordBtn.onclick = () => {
+      document.getElementById("message").innerText = "⚠️ 음성 인식을 지원하지 않는 브라우저";
+    };
+  }
+
+  // ✅ 정답 확인
+  function checkAnswer(userText){
+    if(!userText){ 
+      document.getElementById("message").innerText="❌ 인식 실패";
+      return;
+    }
+    if(userText.toLowerCase().includes(currentAnswer.word.toLowerCase())){
+      document.getElementById("message").innerText="✅ 정답! ("+userText+")";
+      speak("정답입니다", "ko-KR");
+      stage++;
+    } else {
+      document.getElementById("message").innerText="❌ 틀렸습니다 ("+userText+")";
+      speak("틀렸습니다", "ko-KR");
+    }
+  }
+  </script>
+</body>
+</html>
