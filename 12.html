@@ -1,26 +1,22 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>영어 단어 학습 게임 (음성)</title>
-  <style>
-    body {
-      background: #0b0f14;
-      color: #e8f1ff;
-      font-family: sans-serif;
-      text-align: center;
-      padding: 20px;
-    }
-    #question { font-size: 2em; margin: 20px 0; }
-    button {
-      font-size: 1.2em; padding: 10px;
-      border: none; border-radius: 8px;
-      cursor: pointer; background: #4ea1ff; color: white;
-    }
-    button:hover { background: #2c7dd9; }
-    #message { font-size: 1.5em; margin: 20px 0; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>영어 단어 학습 게임 (음성)</title>
+<style>
+  body{background:#0b0f14;color:#e8f1ff;font-family:sans-serif;text-align:center;padding:20px}
+  h1{font-weight:900}
+  #stage{opacity:.9;margin:.5rem 0}
+  #question{font-size:2rem;margin:1rem 0;min-height:2.5rem}
+  #message{font-size:1.25rem;min-height:2rem;margin:.5rem 0}
+  .btn{font-size:1.05rem;padding:10px 18px;border:0;border-radius:10px;cursor:pointer;background:#4ea1ff;color:#fff;margin:6px 4px}
+  .btn:hover{background:#2c7dd9}
+  .blink{animation:blink 1.2s ease-in-out infinite}
+  @keyframes blink{50%{filter:brightness(1.25)}}
+  .pill{display:inline-block;padding:.2rem .6rem;border-radius:999px;background:#143553;font-size:.85rem;margin:0 .2rem}
+  .ok{color:#6fe8a0} .no{color:#ff6f6f}
+</style>
 </head>
 <body>
   <h1>🎮 영어 단어 학습 게임 (음성)</h1>
@@ -29,13 +25,11 @@
   <div id="message"></div>
 
   <div id="controls">
-    <button onclick="startGame()">▶ 시작</button>
-    <button onclick="resetGame()">🔄 리셋</button>
-    <button onclick="goHome()">🏠 홈</button>
-    <button id="recordBtn" style="display:none;">🎤 말하기</button>
+    <button class="btn" id="startBtn">▶ 시작</button>
+    <button class="btn" id="resetBtn">🔄 리셋</button>
+    <button class="btn" id="homeBtn">🏠 홈</button>
+    <button class="btn" id="speakBtn" style="display:none;">🎤 말하기</button>
   </div>
-
-
   <script>
   const words = [
   {
@@ -1919,128 +1913,179 @@
     "meaning": "통치하다"
   }
 ];
-let current = null;
-  let sampleWords = [];
-  let correctStreak = 0;
-  let stage = 1;
+let stage = 1;
+let sample6 = [];
+let current;
+let correctStreak = 0;
+let readingExamples = false;
 
-  const $q = document.getElementById("question");
-  const $msg = document.getElementById("message");
-  const $rec = document.getElementById("recordBtn");
+// ---------------- TTS ----------------
+let voices = [];
+function loadVoices(){ voices = speechSynthesis.getVoices(); }
+speechSynthesis.onvoiceschanged = loadVoices;
 
-  // ✅ TTS
-  function speak(text, lang){
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang;
-    window.speechSynthesis.speak(u);
+function setVoice(u, lang){
+  if(!voices.length) return;
+  if(lang==="ko-KR"){
+    u.voice = voices.find(v=>v.lang.startsWith("ko"))||voices[0];
+  }else{
+    u.voice = voices.find(v=>v.lang.startsWith("en"))||voices[0];
+  }
+}
+function speak(text, lang="ko-KR", cb){
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang=lang; setVoice(u,lang);
+  if(cb) u.onend=cb;
+  speechSynthesis.speak(u);
+}
+
+// ---------------- UI 요소 ----------------
+const $stage=document.getElementById("stage");
+const $q=document.getElementById("question");
+const $msg=document.getElementById("message");
+const $start=document.getElementById("startBtn");
+const $reset=document.getElementById("resetBtn");
+const $home=document.getElementById("homeBtn");
+const $speak=document.getElementById("speakBtn");
+
+$start.onclick=startGame;
+$reset.onclick=resetGame;
+$home.onclick=()=>location.href="index.html";
+
+// ---------------- 유틸 ----------------
+function pickN(list,n){
+  const out=[];
+  while(out.length<Math.min(n,list.length)){
+    const c=list[Math.floor(Math.random()*list.length)];
+    if(!out.includes(c)) out.push(c);
+  }
+  return out;
+}
+
+// ---------------- 게임 흐름 ----------------
+function startGame(){
+  correctStreak=0;
+  $msg.textContent="";
+  $speak.style.display="none";
+  $stage.textContent=`${stage} 단계`;
+
+  sample6=pickN(words,6);
+  readingExamples=true;
+  readExamples(sample6, ()=>{ readingExamples=false; askNext(); });
+}
+
+// 예시 읽기: 한글 → 영어 → 다음
+function readExamples(list, done){
+  let i=0;
+  function step(){
+    if(i>=list.length){ done(); return; }
+    const w=list[i];
+    $q.textContent=w.meaning;
+    speak(w.meaning,"ko-KR",()=>{
+      $q.textContent=`${w.meaning} — ${w.word}`;
+      speak(w.word,"en-US",()=>{
+        setTimeout(()=>{i++; step();},500);
+      });
+    });
+  }
+  step();
+}
+
+// 문제 출제: 한글만
+function askNext(){
+  current=sample6[Math.floor(Math.random()*sample6.length)];
+  $q.textContent=`❓ ${current.meaning}`;
+  speak(current.meaning,"ko-KR");
+  $msg.textContent="정답 영어 단어를 말하세요.";
+  $speak.style.display="inline-block";
+  $speak.classList.add("blink");
+}
+
+// 오답 시 새로운 단어로 교체
+function replaceOneWrong(){
+  const pool=words.filter(w=>!sample6.includes(w));
+  if(!pool.length) return;
+  const idx=sample6.indexOf(current);
+  if(idx>=0) sample6[idx]=pool[Math.floor(Math.random()*pool.length)];
+}
+
+// ---------------- 음성 인식 ----------------
+let recognition;
+if("webkitSpeechRecognition" in window){
+  recognition=new webkitSpeechRecognition();
+  recognition.lang="en-US";
+  recognition.continuous=false;
+  recognition.interimResults=false;
+
+  $speak.onclick=()=>{
+    if(readingExamples) return;
+    $speak.classList.remove("blink");
+    $msg.textContent="🎤 듣는 중...";
+    recognition.start();
+  };
+
+  recognition.onresult=(e)=>{
+    const said=e.results[0][0].transcript;
+    judgeAnswer(said);
+  };
+  recognition.onerror=(e)=>{
+    $msg.textContent="❌ 인식 오류";
+    $speak.classList.add("blink");
+  };
+}else{
+  $speak.onclick=()=>alert("이 브라우저는 음성 인식을 지원하지 않습니다.");
+}
+
+// ---------------- 정답 판정 ----------------
+function norm(s){return (s||"").toLowerCase().replace(/[^a-z]/g,"").trim();}
+function judgeAnswer(saidRaw){
+  const said = norm(saidRaw);
+  const ans  = norm(current.word);
+
+  if(!said){ 
+    $msg.textContent="❌ 인식 실패";
+    $speak.classList.add("blink");
+    return;
   }
 
-  // ✅ 예문 뽑기 (4개)
-  function pickNewExamples(){
-    sampleWords = [];
-    while(sampleWords.length < 4){
-      const candidate = words[Math.floor(Math.random()*words.length)];
-      if(!sampleWords.includes(candidate)) sampleWords.push(candidate);
-    }
-  }
+  if(said===ans || said.includes(ans)||ans.includes(said)){
+    correctStreak++;
+    $msg.innerHTML=`✅ 정답! (${saidRaw}) <span class="pill">연속 ${correctStreak}/3</span>`;
+    speak("정답입니다","ko-KR");
 
-  // ✅ 예문 읽기 (한글 → 영어 순서)
-  function readExamples(i){
-    if(i >= sampleWords.length){
-      setTimeout(askQuestion,1500); // 다 읽으면 문제 출제
-      return;
-    }
-    const w = sampleWords[i];
-    $q.innerText = w.meaning;
-    speak(w.meaning,"ko-KR");
-    setTimeout(()=>{
-      $q.innerText = w.meaning+" - "+w.word;
-      speak(w.word,"en-US");
-      setTimeout(()=>readExamples(i+1),2000);
-    },2000);
-  }
-
-  // ✅ 문제 출제 (한글만 보이게)
-  function askQuestion(){
-    current = sampleWords[Math.floor(Math.random()*sampleWords.length)];
-    $q.innerText = "❓ " + current.meaning;
-    speak(current.meaning,"ko-KR");
-    $rec.style.display = "inline-block";
-  }
-
-  // ✅ 게임 시작
-  function startGame(){
-    correctStreak = 0;
-    document.getElementById("stage").innerText = stage + " 단계";
-    $msg.innerText = "";
-    pickNewExamples();
-    readExamples(0);
-  }
-
-  // ✅ 정답 판정
-  function judgeAnswer(said){
-    if(!said){
-      $msg.innerHTML="❌ 인식 실패";
-      return;
-    }
-    const saidRaw = said.trim().toLowerCase();
-    if(saidRaw.includes(current.word.toLowerCase())){
-      correctStreak++;
-      $msg.innerHTML = `✅ 정답 (${saidRaw})`;
-      speak("정답입니다","ko-KR");
-      if(correctStreak >= 3){
-        $msg.innerHTML = "🎉 3연속 성공! 다음 단계로";
-        speak("3문제를 연속으로 맞추셨습니다","ko-KR");
-        stage++;
-        setTimeout(startGame,2000);
-      } else {
-        setTimeout(askQuestion,1000);
-      }
+    if(correctStreak>=3){
+      // 3연속 정답 → 다음 단계
+      speak(`${stage}단계 통과! 다음 단계로`,"ko-KR");
+      stage++; correctStreak=0;
+      setTimeout(startGame,1000);
     } else {
-      correctStreak = 0;
-      $msg.innerHTML = `❌ 오답 (${saidRaw}) — 정답은 ${current.word}`;
-      speak("틀렸습니다. 새로운 문제입니다","ko-KR");
-      setTimeout(startGame,1500); // ❗ 틀리면 예문 새로 뽑기
+      // 3연속 전이면 → 다음 문제
+      setTimeout(askNext,800);
     }
-  }
-
-  function resetGame(){
-    stage=1; correctStreak=0;
-    document.getElementById("stage").innerText="시작 전";
-    $q.innerText="▶ 시작 버튼을 누르세요";
-    $msg.innerText="";
-    $rec.style.display="none";
-  }
-
-  function goHome(){ window.location.href="index.html"; }
-
-  // ✅ 환경 감지
-  function isIOS(){ return /iPhone|iPad|iPod/i.test(navigator.userAgent); }
-
-  // 🎤 음성 인식
-  let recognition, mediaRecorder;
-  if(isIOS() && "webkitSpeechRecognition" in window){
-    recognition = new webkitSpeechRecognition();
-    recognition.lang="en-US"; recognition.continuous=false; recognition.interimResults=false;
-    $rec.onclick = ()=>{
-      recognition.start();
-      $msg.innerText="🎤 듣는 중...";
-    };
-    recognition.onresult = (e)=> judgeAnswer(e.results[0][0].transcript);
-    recognition.onerror = (e)=> { $msg.innerText="❌ 인식 오류 (iOS)"; console.error(e); };
-  } else if("webkitSpeechRecognition" in window){ // PC/안드 크롬도 브라우저 STT 지원
-    recognition = new webkitSpeechRecognition();
-    recognition.lang="en-US"; recognition.continuous=false; recognition.interimResults=false;
-    $rec.onclick = ()=>{
-      recognition.start();
-      $msg.innerText="🎤 듣는 중...";
-    };
-    recognition.onresult = (e)=> judgeAnswer(e.results[0][0].transcript);
-    recognition.onerror = (e)=> { $msg.innerText="❌ 인식 오류"; console.error(e); };
   } else {
-    $rec.onclick = ()=>{ $msg.innerText="⚠️ 음성인식 미지원 브라우저"; };
+    // ❌ 오답 처리
+    correctStreak = 0;  // streak 초기화
+    $msg.innerHTML=`❌ 오답 (${saidRaw}) — 정답은 ${current.word}`;
+    speak("틀렸습니다","ko-KR");
+
+    // 👉 현재 문제는 버리고 새로운 랜덤 문제로 교체
+    setTimeout(()=>{
+      replaceOneWrong(); // 기존 예시 중 1개를 새로운 단어로 교체
+      askNext();         // 곧바로 새로운 문제 출제
+    },1000);
   }
-  </script>
+}
+
+
+// ---------------- 리셋 ----------------
+function resetGame(){
+  stage=1; correctStreak=0; sample6=[]; current=null;
+  $stage.textContent="시작 전";
+  $q.textContent="▶ 시작 버튼을 누르세요";
+  $msg.textContent="";
+  $speak.style.display="none";
+  speechSynthesis.cancel();
+}
+</script>
 </body>
 </html>
