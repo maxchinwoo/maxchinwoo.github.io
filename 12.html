@@ -17,7 +17,6 @@
     .videoBox{position:relative; border-radius:12px; overflow:hidden; background:#000;}
     video{width:100%; height:auto; display:block; object-fit:cover;}
     canvas{display:none;}
-    .btns{display:flex; flex-wrap:wrap; gap:8px; justify-content:center}
     button, select, label.input-btn{
       font-size:16px; border:none; border-radius:12px; padding:12px 14px; background:var(--pri); color:#fff; cursor:pointer;
       display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 12px rgb(0 0 0 / 0.2);
@@ -26,8 +25,7 @@
     button.warn{background:var(--warn)}
     button:disabled{opacity:.55; cursor:not-allowed}
     select{background:#334155}
-    .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
-    .preview{display:grid; gap:8px;}
+    .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px}
     .shots{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
     .shots img{width:100%; border-radius:12px; display:block; background:#000}
     .hint{color:var(--sub); font-size:.9rem; text-align:center}
@@ -44,12 +42,11 @@
 
     <div class="card">
       <div class="videoBox">
-        <!-- iOS에서 자동재생 위해 muted + playsinline 필요 -->
         <video id="video" autoplay muted playsinline></video>
         <canvas id="canvas"></canvas>
       </div>
 
-      <div class="row" style="margin-top:10px">
+      <div class="row">
         <button id="btnStart">카메라 시작</button>
         <button id="btnSwitch" class="secondary" disabled>전/후면·장치 전환</button>
         <button id="btnTorch" class="secondary" disabled>🔦 플래시</button>
@@ -59,7 +56,6 @@
 
       <div class="row">
         <select id="deviceSelect" class="hidden" title="카메라 선택"></select>
-        <!-- 폴백: getUserMedia 실패 시 -->
         <label class="input-btn secondary" title="폴백으로 파일 선택">
           📁 폴백으로 사진 선택
           <input id="fileInput" type="file" accept="image/*" capture="environment" style="display:none"/>
@@ -67,13 +63,14 @@
       </div>
 
       <p class="hint">
-        ⚙️ 팁: HTTPS(또는 <code>localhost</code>)에서만 카메라 권한이 열립니다. iOS Safari는 버튼을 눌러 시작해야 스트림이 열립니다.
+        ⚙️ HTTPS(또는 localhost)에서만 카메라 권한이 열립니다. iOS Safari는 버튼을 눌러야 시작됩니다.
       </p>
     </div>
 
-    <div class="card preview">
+    <div class="card">
       <div class="row">
         <button id="btnDownload" class="secondary" disabled>💾 마지막 사진 저장</button>
+        <button id="btnShare" class="secondary" disabled>📤 iOS로 저장/공유</button>
         <button id="btnClear" class="secondary" disabled>🧹 미리보기 비우기</button>
       </div>
       <div id="shots" class="shots"></div>
@@ -82,7 +79,6 @@
 </div>
 
 <script>
-  // ===== 공용 엘리먼트 =====
   const els = {
     video: document.getElementById('video'),
     canvas: document.getElementById('canvas'),
@@ -93,286 +89,137 @@
     btnSwitch: document.getElementById('btnSwitch'),
     btnTorch: document.getElementById('btnTorch'),
     btnDownload: document.getElementById('btnDownload'),
+    btnShare: document.getElementById('btnShare'),
     btnClear: document.getElementById('btnClear'),
     shots: document.getElementById('shots'),
     deviceSelect: document.getElementById('deviceSelect'),
     fileInput: document.getElementById('fileInput'),
   };
 
-  // ===== 상태 =====
-  let stream = null;
-  let currentTrack = null;
-  let lastBlobUrl = null;
-  let hasTorch = false;
-  let usingBack = true; // 모바일 기본 후면
-  let lastTriedFacing = null;
+  let stream=null, currentTrack=null, lastBlobUrl=null, hasTorch=false, usingBack=true;
 
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isSecure=location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1';
 
-  // ===== 유틸 =====
-  function showError(msg, e=null){
-    els.err.style.display = 'block';
-    const extra = e ? `\n[${e.name || ''}] ${e.message || e}` : '';
-    els.err.textContent = '오류: ' + msg + extra;
-    console.error(msg, e);
+  function showError(msg,e=null){
+    els.err.style.display='block';
+    els.err.textContent='오류: '+msg+(e?`\n[${e.name}] ${e.message}`:'');
+    console.error(msg,e);
   }
-  function clearError(){
-    els.err.style.display = 'none';
-    els.err.textContent = '';
-  }
+  function clearError(){ els.err.style.display='none'; els.err.textContent=''; }
 
   async function listCameras(){
-    try{
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      return devices.filter(d => d.kind === 'videoinput');
-    }catch(e){
-      showError('카메라 목록을 가져올 수 없습니다.', e);
-      return [];
-    }
+    try{ return (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'); }
+    catch(e){ showError('카메라 목록을 가져올 수 없습니다.',e); return []; }
   }
 
-  function buildConstraints({deviceId=null, facingMode=null, tier=1}={}){
-    // tier: 1(권장) → 2(느슨) → 3(최소) → 4(아주 느슨/자동)
-    const tiers = {
-      1: { width:{min:320, ideal:1280, max:1920}, height:{min:240, ideal:720, max:1080}, frameRate:{ideal:30, max:60} },
-      2: { width:{min:320, ideal:960,  max:1920}, height:{min:240, ideal:540, max:1080}, frameRate:{ideal:24, max:60} },
-      3: { width:{min:320, ideal:640,  max:1280}, height:{min:240, ideal:480, max:720 }, frameRate:{ideal:24, max:30} },
-      4: {} // 브라우저가 알아서
+  function buildConstraints({deviceId=null,facingMode=null,tier=1}={}){
+    const tiers={
+      1:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:60}},
+      2:{width:{ideal:960},height:{ideal:540},frameRate:{ideal:24,max:60}},
+      3:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30}},
+      4:{}
     };
-    const video = Object.assign({}, tiers[tier] || {});
-    if (deviceId) video.deviceId = { exact: deviceId };
-    else if (facingMode) video.facingMode = { exact: facingMode };
-    return { audio:false, video: Object.keys(video).length ? video : true };
+    const video=Object.assign({},tiers[tier]||{});
+    if(deviceId) video.deviceId={exact:deviceId};
+    else if(facingMode) video.facingMode={exact:facingMode};
+    return {audio:false,video:Object.keys(video).length?video:true};
   }
 
-  async function startStream({deviceId=null, preferFacing=null}={}){
-    clearError();
-    stopStream();
-
-    if(!isSecure){
-      showError('보안 컨텍스트가 아닙니다. HTTPS 또는 localhost에서 열어주세요.');
-      return;
-    }
-
-    const attempts = [];
-    // 모바일은 후면 시도 → 실패 시 사용자/자동
+  async function startStream({deviceId=null,preferFacing=null}={}){
+    clearError(); stopStream();
+    if(!isSecure){ showError('HTTPS 또는 localhost에서만 사용 가능합니다.'); return; }
+    const attempts=[];
     if(isMobile){
-      if(preferFacing){ attempts.push({ facingMode: preferFacing, tier:1 }); }
-      else            { attempts.push({ facingMode: 'environment', tier:1 }); }
-      attempts.push({ facingMode: 'environment', tier:2 });
-      attempts.push({ facingMode: 'environment', tier:3 });
-      attempts.push({ facingMode: 'user', tier:2 });
-      attempts.push({ facingMode: 'user', tier:3 });
-      attempts.push({ tier:4 });
+      if(preferFacing) attempts.push({facingMode:preferFacing,tier:1});
+      else attempts.push({facingMode:'environment',tier:1});
+      attempts.push({facingMode:'environment',tier:2},{facingMode:'user',tier:2},{tier:3},{tier:4});
     }else{
-      // PC는 facingMode 없이 가는 게 안전
-      if(deviceId) attempts.push({ deviceId, tier:1 });
-      attempts.push({ tier:1 });
-      attempts.push({ tier:2 });
-      attempts.push({ tier:3 });
-      attempts.push({ tier:4 });
+      if(deviceId) attempts.push({deviceId,tier:1});
+      attempts.push({tier:1},{tier:2},{tier:3},{tier:4});
     }
-
-    // deviceId가 명시되었으면 최우선으로
-    if(deviceId){
-      attempts.unshift({ deviceId, tier:1 });
-      attempts.unshift({ deviceId, tier:2 });
-      attempts.unshift({ deviceId, tier:3 });
-    }
-
-    let lastError = null;
     for(const opt of attempts){
-      try{
-        lastTriedFacing = opt.facingMode || null;
-        const cons = buildConstraints(opt);
-        // console.debug('try constraints:', cons);
-        stream = await navigator.mediaDevices.getUserMedia(cons);
-        break; // 성공
-      }catch(e){
-        lastError = e;
-        // OverconstrainedError는 다음 tier로 완화 재시도
-        continue;
-      }
+      try{ stream=await navigator.mediaDevices.getUserMedia(buildConstraints(opt)); break; }
+      catch(e){ continue; }
     }
+    if(!stream){ showError('카메라를 시작할 수 없습니다.'); return; }
 
-    if(!stream){
-      showError('카메라를 시작할 수 없습니다. 권한/장치/제약을 확인하세요.', lastError);
-      return;
-    }
-
-    // 비디오 연결
-    els.video.srcObject = stream;
-    currentTrack = stream.getVideoTracks()[0];
+    els.video.srcObject=stream;
+    currentTrack=stream.getVideoTracks()[0];
 
     // 토치 지원 체크
-    hasTorch = false;
-    els.btnTorch.disabled = true;
     try{
-      const caps = currentTrack.getCapabilities?.();
-      if (caps && 'torch' in caps){
-        hasTorch = true;
-        els.btnTorch.disabled = false;
-      }
-    }catch(_) {}
+      const caps=currentTrack.getCapabilities?.();
+      if(caps && 'torch' in caps){ hasTorch=true; els.btnTorch.disabled=false; }
+    }catch(_){}
 
     // 장치 목록 UI
-    const cams = await listCameras();
-    if (cams.length > 1){
+    const cams=await listCameras();
+    if(cams.length>1){
       els.deviceSelect.classList.remove('hidden');
-      els.deviceSelect.innerHTML = cams.map(d => `<option value="${d.deviceId}">${d.label || '카메라'}</option>`).join('');
-      // 현재 트랙 deviceId로 동기화
-      const cur = currentTrack.getSettings?.().deviceId;
-      if(cur) els.deviceSelect.value = cur;
+      els.deviceSelect.innerHTML=cams.map(d=>`<option value="${d.deviceId}">${d.label||'카메라'}</option>`).join('');
+      const cur=currentTrack.getSettings?.().deviceId;
+      if(cur) els.deviceSelect.value=cur;
+    }else{ els.deviceSelect.classList.add('hidden'); }
+
+    els.btnCapture.disabled=false;
+    els.btnStart.disabled=true;
+    els.video.onplaying=()=>{ els.btnStop.disabled=false; els.btnSwitch.disabled=cams.length<=1&&!isMobile; };
+  }
+
+  function stopStream(){ if(stream){stream.getTracks().forEach(t=>t.stop());} stream=null; currentTrack=null; els.video.srcObject=null; els.btnCapture.disabled=true; els.btnStop.disabled=true; els.btnSwitch.disabled=true; els.btnTorch.disabled=true; els.btnStart.disabled=false; }
+
+  async function toggleTorch(){ if(!currentTrack)return; try{ const s=currentTrack.getSettings?.()||{}; const isOn=s.torch===true; await currentTrack.applyConstraints({advanced:[{torch:!isOn}]}); els.btnTorch.textContent=!isOn?'🔦 플래시 끄기':'🔦 플래시'; }catch(e){ showError('플래시를 켤 수 없습니다.',e); els.btnTorch.disabled=true; } }
+
+  function capture(){ if(!stream)return; const v=els.video,c=els.canvas; c.width=v.videoWidth||1280;c.height=v.videoHeight||720; c.getContext('2d').drawImage(v,0,0,c.width,c.height); c.toBlob(b=>{ if(!b)return; const url=URL.createObjectURL(b); lastBlobUrl=url; addShot(url); els.btnDownload.disabled=false; els.btnClear.disabled=false; els.btnShare.disabled=false;},'image/jpeg',0.92); }
+
+  function addShot(url){ const img=new Image(); img.src=url; const w=document.createElement('div'); w.appendChild(img); els.shots.prepend(w); }
+
+  function downloadLast(){ if(!lastBlobUrl)return; const a=document.createElement('a'); a.href=lastBlobUrl;a.download='photo.jpg';document.body.appendChild(a);a.click();a.remove(); }
+
+  async function shareOnIOS(){
+    if(!lastBlobUrl){showError('공유할 이미지가 없습니다.');return;}
+    const res=await fetch(lastBlobUrl);const blob=await res.blob();
+    const file=new File([blob],'photo.jpg',{type:'image/jpeg'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'photo.jpg'});
     }else{
-      els.deviceSelect.classList.add('hidden');
-    }
-
-    // 버튼 상태
-    els.btnCapture.disabled = false;
-    els.btnStop.disabled = true; // 아래 onplaying에서 활성화
-    els.btnSwitch.disabled = cams.length > 1 || isMobile; // 모바일/다중장치면 전환 사용
-    els.btnStart.disabled = true;
-
-    // 영상이 실제로 재생되면 정지 버튼 활성화
-    els.video.onplaying = () => { els.btnStop.disabled = false; };
-  }
-
-  function stopStream(){
-    if(stream){
-      for (const t of stream.getTracks()) t.stop();
-      stream = null;
-    }
-    currentTrack = null;
-    els.video.srcObject = null;
-    els.btnCapture.disabled = true;
-    els.btnStop.disabled = true;
-    els.btnSwitch.disabled = true;
-    els.btnTorch.disabled = true;
-    els.btnStart.disabled = false;
-  }
-
-  async function toggleTorch(){
-    if(!currentTrack) return;
-    try{
-      const settings = currentTrack.getSettings?.() || {};
-      const isOn = settings.torch === true;
-      await currentTrack.applyConstraints({ advanced: [{ torch: !isOn }] });
-      els.btnTorch.textContent = !isOn ? '🔦 플래시 끄기' : '🔦 플래시';
-    }catch(e){
-      showError('플래시를 켤 수 없는 기기/브라우저입니다.', e);
-      els.btnTorch.disabled = true;
+      const reader=new FileReader();
+      reader.onload=()=>{ const a=document.createElement('a'); a.href=reader.result;a.target='_blank';document.body.appendChild(a);a.click();a.remove(); showError('이미지 탭이 열렸습니다. 길게 눌러 “사진에 추가” 또는 “파일에 저장”을 선택하세요.');};
+      reader.readAsDataURL(blob);
     }
   }
 
-  function capture(){
-    if(!stream){ return; }
-    const video = els.video, canvas = els.canvas;
-    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
-    canvas.width = vw; canvas.height = vh;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, vw, vh);
-    canvas.toBlob(blob => {
-      if(!blob) return;
-      const url = URL.createObjectURL(blob);
-      lastBlobUrl = url;
-      addShot(url);
-      els.btnDownload.disabled = false;
-      els.btnClear.disabled = false;
-    }, 'image/jpeg', 0.92);
-  }
+  function clearShots(){ els.shots.innerHTML=''; if(lastBlobUrl){URL.revokeObjectURL(lastBlobUrl); lastBlobUrl=null;} els.btnDownload.disabled=true; els.btnClear.disabled=true; els.btnShare.disabled=true; }
 
-  function addShot(url){
-    const img = new Image();
-    img.src = url; img.alt = '캡처 이미지';
-    const wrap = document.createElement('div');
-    wrap.appendChild(img);
-    const a = document.createElement('a');
-    a.textContent = '저장';
-    a.download = 'photo.jpg';
-    a.href = url;
-    a.style.display = 'inline-block';
-    a.style.marginTop = '6px';
-    a.style.color = '#cfe3ff';
-    wrap.appendChild(a);
-    els.shots.prepend(wrap);
-  }
+  // 이벤트 바인딩
+  els.btnStart.addEventListener('click',()=>startStream({preferFacing:isMobile?'environment':null}));
+  els.btnStop.addEventListener('click',stopStream);
+  els.btnCapture.addEventListener('click',capture);
+  els.btnDownload.addEventListener('click',downloadLast);
+  els.btnClear.addEventListener('click',clearShots);
+  els.btnTorch.addEventListener('click',toggleTorch);
+  els.btnShare.addEventListener('click',shareOnIOS);
 
-  function downloadLast(){
-    if(!lastBlobUrl) return;
-    const a = document.createElement('a');
-    a.href = lastBlobUrl;
-    a.download = 'photo.jpg';
-    document.body.appendChild(a); a.click(); a.remove();
-  }
-
-  function clearShots(){
-    els.shots.innerHTML = '';
-    if(lastBlobUrl){ URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
-    els.btnDownload.disabled = true;
-    els.btnClear.disabled = true;
-  }
-
-  // ===== 이벤트 바인딩 =====
-  els.btnStart.addEventListener('click', () => {
-    // 기본: 모바일은 후면, PC는 장치 자동
-    startStream({ preferFacing: isMobile ? 'environment' : null });
-    usingBack = true;
-  });
-  els.btnStop.addEventListener('click', stopStream);
-  els.btnCapture.addEventListener('click', capture);
-  els.btnDownload.addEventListener('click', downloadLast);
-  els.btnClear.addEventListener('click', clearShots);
-  els.btnTorch.addEventListener('click', toggleTorch);
-
-  els.btnSwitch.addEventListener('click', async () => {
-    const cams = await listCameras();
-    // 모바일: 전/후면 토글, PC: 다음 장치로 순환
+  els.btnSwitch.addEventListener('click',async()=>{
+    const cams=await listCameras();
     if(isMobile){
-      usingBack = !usingBack;
-      const target = cams.find(d => {
-        const name = (d.label || '').toLowerCase();
-        return usingBack ? name.includes('back') || name.includes('rear') || name.includes('environment')
-                         : name.includes('front') || name.includes('user');
-      }) || cams[0];
-      if(target) startStream({ deviceId: target.deviceId });
-      else startStream({ preferFacing: usingBack ? 'environment' : 'user' });
+      usingBack=!usingBack;
+      const target=cams.find(d=>{ const n=(d.label||'').toLowerCase(); return usingBack?(n.includes('back')||n.includes('rear')||n.includes('environment')):(n.includes('front')||n.includes('user')); })||cams[0];
+      if(target) startStream({deviceId:target.deviceId});
+      else startStream({preferFacing:usingBack?'environment':'user'});
     }else{
-      // 현재 선택의 다음 장치
-      if(cams.length <= 1){ return; }
-      const ids = cams.map(c => c.deviceId);
-      const curId = currentTrack?.getSettings?.().deviceId;
-      const idx = Math.max(0, ids.indexOf(curId));
-      const nextId = ids[(idx + 1) % ids.length];
-      startStream({ deviceId: nextId });
+      if(cams.length<=1)return;
+      const ids=cams.map(c=>c.deviceId); const cur=currentTrack?.getSettings?.().deviceId; const idx=Math.max(0,ids.indexOf(cur)); const nextId=ids[(idx+1)%ids.length]; startStream({deviceId:nextId});
     }
   });
 
-  els.deviceSelect.addEventListener('change', (e) => {
-    const id = e.target.value;
-    if(id) startStream({ deviceId: id });
-  });
+  els.deviceSelect.addEventListener('change',e=>{ const id=e.target.value; if(id) startStream({deviceId:id}); });
 
-  // 폴백: 파일 입력에서도 미리보기 추가
-  els.fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if(!file) return;
-    const url = URL.createObjectURL(file);
-    lastBlobUrl = url;
-    addShot(url);
-    els.btnDownload.disabled = false;
-    els.btnClear.disabled = false;
-  });
+  els.fileInput.addEventListener('change',e=>{ const f=e.target.files?.[0]; if(!f)return; const url=URL.createObjectURL(f); lastBlobUrl=url; addShot(url); els.btnDownload.disabled=false; els.btnClear.disabled=false; els.btnShare.disabled=false; });
 
-  // ===== 사전 체크 =====
-  if(!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)){
-    showError('이 브라우저는 getUserMedia를 지원하지 않습니다. (파일 선택 폴백을 사용하세요)');
-  }
-  if(!isSecure){
-    showError('보안 컨텍스트가 아닙니다. HTTPS 또는 localhost로 접속해야 합니다.');
-  }
-
-  // 참고: iframe 안에서 쓰면 <iframe allow="camera; microphone"> 필요
+  if(!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)){ showError('이 브라우저는 getUserMedia를 지원하지 않습니다.'); }
+  if(!isSecure){ showError('HTTPS 또는 localhost로 접속해야 합니다.'); }
 </script>
 </body>
 </html>
