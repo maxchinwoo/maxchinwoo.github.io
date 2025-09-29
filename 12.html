@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
-  <title>📷 카메라로 사진 찍기 (모바일 웹)</title>
+  <title>📷 카메라로 사진 찍기 (모바일/PC)</title>
   <style>
     :root{
       --bg:#0b0f14; --card:#101725; --pri:#4ea1ff; --txt:#e8f1ff; --sub:#a7bed3; --warn:#ff6b6b;
@@ -31,46 +31,43 @@
     .shots{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
     .shots img{width:100%; border-radius:12px; display:block; background:#000}
     .hint{color:var(--sub); font-size:.9rem; text-align:center}
-    .error{color:#ffd0d0; background:#3b0f0f; padding:10px; border-radius:10px; display:none}
+    .error{color:#ffd0d0; background:#3b0f0f; padding:10px; border-radius:10px; display:none; white-space:pre-wrap}
     .hidden{display:none}
-    /* iOS full-height fix */
-    @supports(-webkit-touch-callout:none){
-      .videoBox{max-height:62vh}
-    }
+    @supports(-webkit-touch-callout:none){ .videoBox{max-height:62vh} }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>📷 카메라로 사진 찍기 (모바일 웹)</h1>
+  <h1>📷 카메라로 사진 찍기 (모바일/PC)</h1>
   <div class="grid">
     <div id="err" class="error"></div>
 
     <div class="card">
       <div class="videoBox">
-        <!-- iOS에서 자동재생을 위해 muted + playsinline 필수 -->
+        <!-- iOS에서 자동재생 위해 muted + playsinline 필요 -->
         <video id="video" autoplay muted playsinline></video>
         <canvas id="canvas"></canvas>
       </div>
 
       <div class="row" style="margin-top:10px">
         <button id="btnStart">카메라 시작</button>
-        <button id="btnSwitch" class="secondary" disabled>전/후면 전환</button>
+        <button id="btnSwitch" class="secondary" disabled>전/후면·장치 전환</button>
         <button id="btnTorch" class="secondary" disabled>🔦 플래시</button>
         <button id="btnCapture" disabled>📸 촬영</button>
         <button id="btnStop" class="warn" disabled>정지</button>
       </div>
 
       <div class="row">
-        <select id="deviceSelect" class="hidden"></select>
-        <!-- 폴백: 파일 입력(일부 iOS/보안 환경에서 getUserMedia가 막힌 경우) -->
-        <label class="input-btn secondary">
+        <select id="deviceSelect" class="hidden" title="카메라 선택"></select>
+        <!-- 폴백: getUserMedia 실패 시 -->
+        <label class="input-btn secondary" title="폴백으로 파일 선택">
           📁 폴백으로 사진 선택
           <input id="fileInput" type="file" accept="image/*" capture="environment" style="display:none"/>
         </label>
       </div>
 
       <p class="hint">
-        ⚙️ 팁: HTTPS(또는 localhost)에서 열어야 카메라 권한이 열립니다. iOS Safari는 사용자의 터치로 시작해야 스트림이 열립니다.
+        ⚙️ 팁: HTTPS(또는 <code>localhost</code>)에서만 카메라 권한이 열립니다. iOS Safari는 버튼을 눌러 시작해야 스트림이 열립니다.
       </p>
     </div>
 
@@ -85,6 +82,7 @@
 </div>
 
 <script>
+  // ===== 공용 엘리먼트 =====
   const els = {
     video: document.getElementById('video'),
     canvas: document.getElementById('canvas'),
@@ -101,15 +99,22 @@
     fileInput: document.getElementById('fileInput'),
   };
 
+  // ===== 상태 =====
   let stream = null;
-  let usingBack = true;        // 기본: 후면
-  let currentTrack = null;     // Video track
+  let currentTrack = null;
   let lastBlobUrl = null;
   let hasTorch = false;
+  let usingBack = true; // 모바일 기본 후면
+  let lastTriedFacing = null;
 
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+  // ===== 유틸 =====
   function showError(msg, e=null){
     els.err.style.display = 'block';
-    els.err.textContent = '오류: ' + msg + (e ? ' (' + (e.message || e.name || e) + ')' : '');
+    const extra = e ? `\n[${e.name || ''}] ${e.message || e}` : '';
+    els.err.textContent = '오류: ' + msg + extra;
     console.error(msg, e);
   }
   function clearError(){
@@ -120,75 +125,117 @@
   async function listCameras(){
     try{
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter(d => d.kind === 'videoinput');
-      return cams;
+      return devices.filter(d => d.kind === 'videoinput');
     }catch(e){
       showError('카메라 목록을 가져올 수 없습니다.', e);
       return [];
     }
   }
 
-  async function startStream({deviceId=null, facingMode=null}={}){
+  function buildConstraints({deviceId=null, facingMode=null, tier=1}={}){
+    // tier: 1(권장) → 2(느슨) → 3(최소) → 4(아주 느슨/자동)
+    const tiers = {
+      1: { width:{min:320, ideal:1280, max:1920}, height:{min:240, ideal:720, max:1080}, frameRate:{ideal:30, max:60} },
+      2: { width:{min:320, ideal:960,  max:1920}, height:{min:240, ideal:540, max:1080}, frameRate:{ideal:24, max:60} },
+      3: { width:{min:320, ideal:640,  max:1280}, height:{min:240, ideal:480, max:720 }, frameRate:{ideal:24, max:30} },
+      4: {} // 브라우저가 알아서
+    };
+    const video = Object.assign({}, tiers[tier] || {});
+    if (deviceId) video.deviceId = { exact: deviceId };
+    else if (facingMode) video.facingMode = { exact: facingMode };
+    return { audio:false, video: Object.keys(video).length ? video : true };
+  }
+
+  async function startStream({deviceId=null, preferFacing=null}={}){
     clearError();
     stopStream();
 
-    const constraints = {
-      audio:false,
-      video: {
-        width: { ideal: 1280 },
-        height:{ ideal: 720 },
-        frameRate: { ideal: 30, max: 60 }
-      }
-    };
+    if(!isSecure){
+      showError('보안 컨텍스트가 아닙니다. HTTPS 또는 localhost에서 열어주세요.');
+      return;
+    }
 
-    if (deviceId){
-      constraints.video.deviceId = { exact: deviceId };
-    }else if (facingMode){
-      constraints.video.facingMode = { exact: facingMode };
+    const attempts = [];
+    // 모바일은 후면 시도 → 실패 시 사용자/자동
+    if(isMobile){
+      if(preferFacing){ attempts.push({ facingMode: preferFacing, tier:1 }); }
+      else            { attempts.push({ facingMode: 'environment', tier:1 }); }
+      attempts.push({ facingMode: 'environment', tier:2 });
+      attempts.push({ facingMode: 'environment', tier:3 });
+      attempts.push({ facingMode: 'user', tier:2 });
+      attempts.push({ facingMode: 'user', tier:3 });
+      attempts.push({ tier:4 });
     }else{
-      constraints.video.facingMode = { ideal: 'environment' };
+      // PC는 facingMode 없이 가는 게 안전
+      if(deviceId) attempts.push({ deviceId, tier:1 });
+      attempts.push({ tier:1 });
+      attempts.push({ tier:2 });
+      attempts.push({ tier:3 });
+      attempts.push({ tier:4 });
     }
 
-    try{
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      els.video.srcObject = stream;
+    // deviceId가 명시되었으면 최우선으로
+    if(deviceId){
+      attempts.unshift({ deviceId, tier:1 });
+      attempts.unshift({ deviceId, tier:2 });
+      attempts.unshift({ deviceId, tier:3 });
+    }
 
-      // 트랙/토치 여부 체크
-      currentTrack = stream.getVideoTracks()[0];
-      hasTorch = false;
-      els.btnTorch.disabled = true;
+    let lastError = null;
+    for(const opt of attempts){
       try{
-        const caps = currentTrack.getCapabilities?.();
-        if (caps && 'torch' in caps){
-          hasTorch = true;
-          els.btnTorch.disabled = false;
-        }
-      }catch(_) {}
-
-      // 디바이스 목록 UI
-      const cams = await listCameras();
-      if (cams.length > 1){
-        els.deviceSelect.classList.remove('hidden');
-        els.deviceSelect.innerHTML = cams.map(d => `<option value="${d.deviceId}">${d.label || '카메라'}</option>`).join('');
-        // 선택값 동기화
-        if (deviceId){
-          els.deviceSelect.value = deviceId;
-        }
-      }else{
-        els.deviceSelect.classList.add('hidden');
+        lastTriedFacing = opt.facingMode || null;
+        const cons = buildConstraints(opt);
+        // console.debug('try constraints:', cons);
+        stream = await navigator.mediaDevices.getUserMedia(cons);
+        break; // 성공
+      }catch(e){
+        lastError = e;
+        // OverconstrainedError는 다음 tier로 완화 재시도
+        continue;
       }
-
-      // 버튼 상태
-      els.btnCapture.disabled = false;
-      els.btnStop.disabled = false;
-      els.btnSwitch.disabled = cams.length > 1; // 카메라가 둘 이상이면 전환 버튼 활성화
-      els.btnStart.disabled = true;
-
-    }catch(e){
-      // 권한 거부 또는 환경 미지원
-      showError('카메라를 시작할 수 없습니다. 권한 또는 환경을 확인하세요.', e);
-      // 폴백: 파일 입력 안내
     }
+
+    if(!stream){
+      showError('카메라를 시작할 수 없습니다. 권한/장치/제약을 확인하세요.', lastError);
+      return;
+    }
+
+    // 비디오 연결
+    els.video.srcObject = stream;
+    currentTrack = stream.getVideoTracks()[0];
+
+    // 토치 지원 체크
+    hasTorch = false;
+    els.btnTorch.disabled = true;
+    try{
+      const caps = currentTrack.getCapabilities?.();
+      if (caps && 'torch' in caps){
+        hasTorch = true;
+        els.btnTorch.disabled = false;
+      }
+    }catch(_) {}
+
+    // 장치 목록 UI
+    const cams = await listCameras();
+    if (cams.length > 1){
+      els.deviceSelect.classList.remove('hidden');
+      els.deviceSelect.innerHTML = cams.map(d => `<option value="${d.deviceId}">${d.label || '카메라'}</option>`).join('');
+      // 현재 트랙 deviceId로 동기화
+      const cur = currentTrack.getSettings?.().deviceId;
+      if(cur) els.deviceSelect.value = cur;
+    }else{
+      els.deviceSelect.classList.add('hidden');
+    }
+
+    // 버튼 상태
+    els.btnCapture.disabled = false;
+    els.btnStop.disabled = true; // 아래 onplaying에서 활성화
+    els.btnSwitch.disabled = cams.length > 1 || isMobile; // 모바일/다중장치면 전환 사용
+    els.btnStart.disabled = true;
+
+    // 영상이 실제로 재생되면 정지 버튼 활성화
+    els.video.onplaying = () => { els.btnStop.disabled = false; };
   }
 
   function stopStream(){
@@ -220,19 +267,11 @@
 
   function capture(){
     if(!stream){ return; }
-    const video = els.video;
-    const canvas = els.canvas;
-
-    // 비디오 실제 크기 기준
-    const vw = video.videoWidth || 1280;
-    const vh = video.videoHeight || 720;
-
-    canvas.width = vw;
-    canvas.height = vh;
-
+    const video = els.video, canvas = els.canvas;
+    const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+    canvas.width = vw; canvas.height = vh;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, vw, vh);
-
     canvas.toBlob(blob => {
       if(!blob) return;
       const url = URL.createObjectURL(blob);
@@ -245,13 +284,9 @@
 
   function addShot(url){
     const img = new Image();
-    img.src = url;
-    img.alt = '캡처 이미지';
-    img.onload = () => URL.revokeObjectURL; // 메모: 개별 해제는 다운로드/클리어 때 처리
+    img.src = url; img.alt = '캡처 이미지';
     const wrap = document.createElement('div');
     wrap.appendChild(img);
-
-    // 다운로드 버튼 추가(각 이미지별)
     const a = document.createElement('a');
     a.textContent = '저장';
     a.download = 'photo.jpg';
@@ -260,7 +295,6 @@
     a.style.marginTop = '6px';
     a.style.color = '#cfe3ff';
     wrap.appendChild(a);
-
     els.shots.prepend(wrap);
   }
 
@@ -269,44 +303,51 @@
     const a = document.createElement('a');
     a.href = lastBlobUrl;
     a.download = 'photo.jpg';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   function clearShots(){
     els.shots.innerHTML = '';
-    if(lastBlobUrl){
-      URL.revokeObjectURL(lastBlobUrl);
-      lastBlobUrl = null;
-    }
+    if(lastBlobUrl){ URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
     els.btnDownload.disabled = true;
     els.btnClear.disabled = true;
   }
 
-  // 이벤트 바인딩
+  // ===== 이벤트 바인딩 =====
   els.btnStart.addEventListener('click', () => {
-    // 기본은 후면
-    startStream({ facingMode: 'environment' });
+    // 기본: 모바일은 후면, PC는 장치 자동
+    startStream({ preferFacing: isMobile ? 'environment' : null });
     usingBack = true;
   });
   els.btnStop.addEventListener('click', stopStream);
   els.btnCapture.addEventListener('click', capture);
   els.btnDownload.addEventListener('click', downloadLast);
   els.btnClear.addEventListener('click', clearShots);
+  els.btnTorch.addEventListener('click', toggleTorch);
+
   els.btnSwitch.addEventListener('click', async () => {
-    // 전/후면 전환 (기기별로 deviceId 방식이 더 안정적일 수 있음)
-    usingBack = !usingBack;
     const cams = await listCameras();
-    // facingMode가 불안정할 때는 라벨로 후면/전면 추정
-    const target = cams.find(d => {
-      const name = (d.label || '').toLowerCase();
-      return usingBack ? name.includes('back') || name.includes('rear') || name.includes('environment')
-                       : name.includes('front') || name.includes('user');
-    }) || cams[0];
-    if(target) startStream({ deviceId: target.deviceId });
-    else startStream({ facingMode: usingBack ? 'environment' : 'user' });
+    // 모바일: 전/후면 토글, PC: 다음 장치로 순환
+    if(isMobile){
+      usingBack = !usingBack;
+      const target = cams.find(d => {
+        const name = (d.label || '').toLowerCase();
+        return usingBack ? name.includes('back') || name.includes('rear') || name.includes('environment')
+                         : name.includes('front') || name.includes('user');
+      }) || cams[0];
+      if(target) startStream({ deviceId: target.deviceId });
+      else startStream({ preferFacing: usingBack ? 'environment' : 'user' });
+    }else{
+      // 현재 선택의 다음 장치
+      if(cams.length <= 1){ return; }
+      const ids = cams.map(c => c.deviceId);
+      const curId = currentTrack?.getSettings?.().deviceId;
+      const idx = Math.max(0, ids.indexOf(curId));
+      const nextId = ids[(idx + 1) % ids.length];
+      startStream({ deviceId: nextId });
+    }
   });
+
   els.deviceSelect.addEventListener('change', (e) => {
     const id = e.target.value;
     if(id) startStream({ deviceId: id });
@@ -323,23 +364,15 @@
     els.btnClear.disabled = false;
   });
 
-  // 지원 여부 사전 체크
+  // ===== 사전 체크 =====
   if(!('mediaDevices' in navigator) || !('getUserMedia' in navigator.mediaDevices)){
     showError('이 브라우저는 getUserMedia를 지원하지 않습니다. (파일 선택 폴백을 사용하세요)');
   }
+  if(!isSecure){
+    showError('보안 컨텍스트가 아닙니다. HTTPS 또는 localhost로 접속해야 합니다.');
+  }
 
-  // 페이지가 iframe 안에 있다면 allow 속성 필요:
-  // <iframe src="..." allow="camera; microphone; fullscreen"></iframe>
-
-  // 서버 업로드 예시 (원한다면 주석 해제해 구현):
-  // async function uploadLast(){
-  //   if(!lastBlobUrl) return;
-  //   const res = await fetch(lastBlobUrl);
-  //   const blob = await res.blob();
-  //   const form = new FormData();
-  //   form.append('photo', blob, 'photo.jpg');
-  //   await fetch('/upload', { method:'POST', body: form });
-  // }
+  // 참고: iframe 안에서 쓰면 <iframe allow="camera; microphone"> 필요
 </script>
 </body>
 </html>
